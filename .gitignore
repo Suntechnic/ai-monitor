@@ -1,0 +1,6 @@
+runs/
+reports/
+.monitor.lock
+__pycache__/
+.env
+.env.*
