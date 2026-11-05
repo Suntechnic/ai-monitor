@@ -116,8 +116,20 @@ reasoning, повторные попытки и кеш меняют реальн
 публикации, если известна, иначе дату проверки. Сравни с previous.md,
 если его нет — первый запуск. Устаревшие данные не называй текущими.
 '''
+        prompt += f'''
+ВАЖНО: относительные пути выше относятся к папке {run}.
+Фактический корень проекта у инструментов может отличаться от этой папки.
+Используй только абсолютные пути:
+- manifest: {run / 'manifest.json'}
+- каталог моделей: {run / 'openrouter-summary.json'}
+- DeepSeek: {run / 'deepseek.html'}
+- OpenCode: {run / 'opencode.html'}
+- предыдущий отчёт, если существует: {run / 'previous.md'}
+Итог запиши строго в {run / 'report.md'}.
+Не записывай report.md в корень репозитория.
+'''
         (run / 'prompt.txt').write_text(prompt)
-        command = ['opencode', '--standalone', '--auto', 'run', '-m', args.model, prompt]
+        command = ['opencode', '--standalone', 'run', '--auto', '-m', args.model, prompt]
         with (run / 'opencode.log').open('w') as log:
             result = subprocess.run(command, cwd=run, stdout=log, stderr=subprocess.STDOUT,
                                     timeout=args.timeout, check=False)
