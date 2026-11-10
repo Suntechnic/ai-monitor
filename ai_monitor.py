@@ -17,6 +17,8 @@ SOURCES = {
     'openrouter.json': 'https://openrouter.ai/api/v1/models',
     'deepseek.html': 'https://api-docs.deepseek.com/quick_start/pricing/',
     'opencode.html': 'https://opencode.ai/v2/docs/console/models/',
+    'tokenator.html': 'https://tokenator.cloud/models',
+    'vantyr.html': 'https://vantyr.xyz/pricing'
 }
 
 
