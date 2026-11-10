@@ -34,11 +34,83 @@ def load_providers(path):
             raise ValueError(f'HTTPS URL required for {key}')
         if provider['format'] not in ('json', 'html'):
             raise ValueError(f'Unsupported format for {key}')
-        if provider.get('summary') not in (None, 'openrouter'):
+        if provider.get('summary') not in (None, 'openrouter', 'tokenator', 'vantyr'):
             raise ValueError(f'Unsupported summary for {key}')
         if 'token' in provider and (not isinstance(provider['token'], str) or not provider['token'].strip()):
             raise ValueError(f'Invalid token for {key}')
     return providers
+
+
+def summarize_tokenator(html_text):
+    import re
+    for block in re.findall(r'<script[^>]*>([\s\S]*?)</script>', html_text):
+        text = block.strip()
+        if not text.startswith('{'):
+            continue
+        try:
+            payload = json.loads(text)
+        except ValueError:
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get('models'), list):
+            models = []
+            for m in payload['models']:
+                if m.get('free') or any(m.get(k) for k in ('is_image', 'is_video', 'is_speech', 'is_embedding', 'is_decision')):
+                    continue
+                mult_min = m.get('token_multiplier_min', m.get('token_multiplier'))
+                mult_max = m.get('token_multiplier_max', mult_min)
+                usd_min = round(0.27 * mult_min, 4) if isinstance(mult_min, (int, float)) else None
+                usd_max = round(0.27 * mult_max, 4) if isinstance(mult_max, (int, float)) else None
+                models.append({
+                    'id': m.get('id'),
+                    'name': m.get('display_name'),
+                    'owned_by': m.get('owned_by'),
+                    'context_length': m.get('context_length'),
+                    'operational': m.get('operational', True),
+                    'unstable': bool(m.get('unstable')),
+                    'multiplier_min': mult_min,
+                    'multiplier_max': mult_max,
+                    'input_usd_per_1m': usd_min if usd_min == usd_max else {'min': usd_min, 'max': usd_max},
+                    'output_usd_per_1m': usd_min if usd_min == usd_max else {'min': usd_min, 'max': usd_max},
+                })
+            return models
+    raise ValueError('Tokenator models JSON not found in HTML')
+
+
+def summarize_vantyr(raw):
+    import re
+    group_ratio = (raw.get('group_ratio') or {}).get('default', 1)
+    models = []
+    for m in raw.get('data', []):
+        entry = {
+            'id': m.get('model_name'),
+            'description': m.get('description'),
+            'billing_mode': m.get('billing_mode') or 'ratio',
+            'enable_groups': m.get('enable_groups'),
+            'supported_endpoint_types': m.get('supported_endpoint_types'),
+            'official_input_usd': m.get('official_input_usd'),
+            'official_output_usd': m.get('official_output_usd'),
+            'official_cache_usd': m.get('official_cache_usd'),
+        }
+        expr = m.get('billing_expr') or ''
+        if entry['billing_mode'] == 'tiered_expr' and expr:
+            entry['billing_expr'] = expr
+            rates = {k: float(v) for k, v in re.findall(r'\b(p|c|cr|cc|cc1h)\s*\*\s*([0-9.]+)', expr)}
+            entry['input_usd_per_1m'] = rates.get('p')
+            entry['output_usd_per_1m'] = rates.get('c')
+            entry['cache_read_usd_per_1m'] = rates.get('cr')
+        else:
+            ratio = m.get('model_ratio')
+            comp = m.get('completion_ratio')
+            cache = m.get('cache_ratio')
+            inp = round(2.0 * ratio * group_ratio, 6) if isinstance(ratio, (int, float)) else None
+            entry['model_ratio'] = ratio
+            entry['completion_ratio'] = comp
+            entry['cache_ratio'] = cache
+            entry['input_usd_per_1m'] = inp
+            entry['output_usd_per_1m'] = round(inp * comp, 6) if inp is not None and isinstance(comp, (int, float)) else None
+            entry['cache_read_usd_per_1m'] = round(inp * cache, 6) if inp is not None and isinstance(cache, (int, float)) else None
+        models.append(entry)
+    return models
 
 
 def fetch(url, target, token=None):
@@ -89,15 +161,23 @@ def main():
                 fetch(url, run / name, provider.get('token'))
                 if provider['format'] == 'json':
                     raw = json.loads((run / name).read_text(encoding='utf-8'))
+                    (run / name).write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding='utf-8')
                 item['status'] = 'ok'
-                if provider.get('summary') == 'openrouter':
-                    models = [{k: m.get(k) for k in (
-                        'id', 'name', 'context_length', 'pricing',
-                        'supported_parameters', 'top_provider')} for m in raw.get('data', [])]
+                summary_type = provider.get('summary')
+                if summary_type:
+                    if summary_type == 'openrouter':
+                        models = [{k: m.get(k) for k in (
+                            'id', 'name', 'context_length', 'pricing',
+                            'supported_parameters', 'top_provider')} for m in raw.get('data', [])]
+                    elif summary_type == 'tokenator':
+                        models = summarize_tokenator((run / name).read_text(encoding='utf-8'))
+                    elif summary_type == 'vantyr':
+                        models = summarize_vantyr(raw)
                     summary = f'{key}-summary.json'
                     (run / summary).write_text(
                         json.dumps(models, ensure_ascii=False, indent=2), encoding='utf-8')
                     item['file'] = summary
+                    item['format'] = 'json'
             except Exception as exc:
                 error = str(exc)
                 for configured in providers.values():
@@ -106,7 +186,9 @@ def main():
                 item.update(status='error', error=error)
             manifest['sources'].append(item)
         (run / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
-        previous = list((ROOT / 'reports').glob('*.md')) + list((ROOT / 'reports').glob('*/report.md'))
+        previous = list((ROOT / 'reports').glob('*.md')) + [
+            p for p in (ROOT / 'reports').glob('*/report.md') if p.parent.name != 'actual'
+        ]
         if previous:
             latest = max(previous, key=lambda p: p.stat().st_mtime)
             shutil.copyfile(latest, run / 'previous.md')
@@ -142,6 +224,12 @@ def main():
                     raise RuntimeError(f'Unexpected detailed section: {path}')
         destination = ROOT / 'reports' / run.name
         os.replace(output, destination)
+        actual = ROOT / 'reports' / 'actual'
+        if actual.is_symlink() or actual.is_file():
+            actual.unlink()
+        elif actual.is_dir():
+            shutil.rmtree(actual)
+        shutil.copytree(destination, actual)
         print(destination / 'report.md')
 
 

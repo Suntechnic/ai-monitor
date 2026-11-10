@@ -19,14 +19,15 @@ opencode:
   pricing_notes: Пиши «включено в подписку» вместо цены вызова. Проверяй квоты и доступность на тарифе; не считай подписку бесплатной.
 tokenator:
   name: Токенатор
-  token: REPLACE_WITH_REAL_TOKEN
-  url: https://api.tokenator.top/v1/models
-  format: json
-  access: Оплата из запаса токенов; только платные модели.
-  pricing_notes: Базовая цена миллиона токенов 0,27 USD. Если API возвращает множители, умножай базовую цену на подтверждённый множитель соответствующего вида токенов. Если возвращает цены, проверь их единицы. Не считай единый множитель одинаковым для входа и выхода без подтверждения условий. Наличие модели в /v1/models само по себе не подтверждает цену.
+  url: https://tokenator.cloud/models
+  format: html
+  summary: tokenator
+  access: Оплата рублями или криптой за пакет токенов; только платные модели.
+  pricing_notes: Базовая цена 1 млн токенов — 0,27 USD. С баланса списывается (input + output) × множитель модели, поэтому ставка входа и выхода одинакова и равна 0,27 × множитель USD за 1 млн токенов (в summary уже рассчитаны поля input_usd_per_1m и output_usd_per_1m; если multiplier_min и multiplier_max различаются, указывай диапазон).
 vantyr:
   name: Vantyr
   url: https://vantyr.xyz/api/pricing
   format: json
-  access: Оплата по токенам; доступность моделей может меняться.
-  pricing_notes: Отличай тариф продавца от official_* цен разработчика модели. Учитывай billing_mode, billing_expr и условия групп; не угадывай единицы коэффициентов.
+  summary: vantyr
+  access: Оплата по токенам; очень низкие цены, но нестабильная доступность (бывают обрывы и отказы API), моделей мало.
+  pricing_notes: В summary уже рассчитаны тарифы продавца input_usd_per_1m, cache_read_usd_per_1m и output_usd_per_1m в USD за 1 млн токенов (для tiered_expr коэффициенты p, c, cr в billing_expr — прямые цены в USD/1M; для ratio базовая ставка model_ratio=1.0 равна 2,00 USD/1M входа, выход = вход × completion_ratio, cache read = вход × cache_ratio). Отличай их от справочных official_* цен разработчика модели и обязательно учитывай риск нестабильности API.
