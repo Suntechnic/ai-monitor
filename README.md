@@ -6,11 +6,11 @@
 ## Запуск
 
 Установите зависимости: `python3 -m pip install -r requirements.txt`.
-Скопируйте `vars.example.yml` в `vars.yml`, если локального конфига ещё нет.
-В `vars.yml` настраиваются URL, формат, название и условия доступа каждого поставщика.
+Скопируйте `vars.example.yml` в `providers.yml`, если локального конфига ещё нет.
+В `providers.yml` настраиваются URL, формат, название и условия доступа каждого поставщика.
 Поле `token` необязательно; если задано, скрипт отправляет `Authorization: Bearer <token>`.
-Другой конфиг можно выбрать через `--config /absolute/path/vars.yml`.
-`vars.yml` исключён из Git; в manifest и промпт ключи не копируются.
+Другой конфиг можно выбрать через `--config /absolute/path/providers.yml`.
+`providers.yml` исключён из Git; в manifest и промпт ключи не копируются.
 
 В OpenCode должна быть доступна `opencode/glm-5.3-flash-free` (по умолчанию).
 Подключите Tavily и задайте в глобальном конфиге

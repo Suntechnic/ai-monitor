@@ -131,7 +131,7 @@ def main():
     parser.add_argument('--days', type=int, default=7)
     parser.add_argument('--timeout', type=int, default=1800)
     parser.add_argument('--allow-paid-model', action='store_true')
-    parser.add_argument('--config', type=Path, default=ROOT / 'vars.yml')
+    parser.add_argument('--config', type=Path, default=ROOT / 'providers.yml')
     args = parser.parse_args()
     if args.days < 1 or args.timeout < 1:
         parser.error('--days and --timeout must be positive')
