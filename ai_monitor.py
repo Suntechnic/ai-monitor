@@ -41,6 +41,34 @@ def load_providers(path):
     return providers
 
 
+def load_profiles(path):
+    try:
+        import yaml
+    except ImportError:
+        raise RuntimeError('Install dependencies: python3 -m pip install -r requirements.txt') from None
+    profiles = yaml.safe_load(path.read_text(encoding='utf-8'))
+    if not isinstance(profiles, dict) or not profiles:
+        raise ValueError('Profiles config must be a non-empty mapping')
+    for key, profile in profiles.items():
+        if not isinstance(key, str) or not key or any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789_-' for c in key):
+            raise ValueError('Invalid profile key')
+        if not isinstance(profile, dict):
+            raise ValueError(f'Invalid config for {key}')
+        if not isinstance(profile.get('title'), str) or not profile['title'].strip():
+            raise ValueError(f'Missing or invalid title for {key}')
+        for field in ('input', 'output'):
+            value = profile.get(field)
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise ValueError(f'Missing or invalid {field} for {key}')
+        cache = profile.get('cache_read', 0)
+        if not isinstance(cache, int) or isinstance(cache, bool) or cache < 0:
+            raise ValueError(f'Invalid cache_read for {key}')
+        note = profile.get('note')
+        if note is not None and (not isinstance(note, str) or not note.strip()):
+            raise ValueError(f'Invalid note for {key}')
+    return profiles
+
+
 def summarize_tokenator(html_text):
     import re
     for block in re.findall(r'<script[^>]*>([\s\S]*?)</script>', html_text):
@@ -132,6 +160,9 @@ def main():
     parser.add_argument('--timeout', type=int, default=1800)
     parser.add_argument('--allow-paid-model', action='store_true')
     parser.add_argument('--config', type=Path, default=ROOT / 'providers.yml')
+    parser.add_argument('--profiles', type=Path, default=ROOT / 'profiles.yml')
+    parser.add_argument('--dry-run', action='store_true',
+                        help='Prepare snapshots, manifest and prompt, then exit before OpenCode')
     args = parser.parse_args()
     if args.days < 1 or args.timeout < 1:
         parser.error('--days and --timeout must be positive')
@@ -141,6 +172,7 @@ def main():
     if not shutil.which('opencode'):
         parser.error('opencode not found in PATH')
     providers = load_providers(args.config)
+    profiles = load_profiles(args.profiles)
     template = (ROOT / 'prompt.md').read_text(encoding='utf-8')
     for name in ('reports', 'runs'):
         (ROOT / name).mkdir(exist_ok=True)
@@ -152,6 +184,8 @@ def main():
         now = dt.datetime.now().astimezone()
         run = Path(tempfile.mkdtemp(prefix=now.strftime('%Y-%m-%d_%H-%M-%S-'), dir=ROOT / 'runs'))
         manifest = {'time': now.isoformat(), 'model': args.model, 'sources': []}
+        shutil.copyfile(args.profiles, run / 'profiles.yml')
+        manifest['profiles'] = {'file': 'profiles.yml', 'count': len(profiles)}
         for key, provider in providers.items():
             url = provider['url']
             name = f'{key}.{provider["format"]}'
@@ -199,6 +233,10 @@ def main():
         prompt = template.replace('{{NOW}}', now.isoformat()).replace('{{DAYS}}', str(args.days))
         prompt = prompt.replace('{{RUN}}', str(run)).replace('{{OUTPUT}}', str(output))
         (run / 'prompt.txt').write_text(prompt, encoding='utf-8')
+        if args.dry_run:
+            print(f'dry run: {run}')
+            print(run / 'prompt.txt')
+            return
         command = ['opencode', '--standalone', 'run', '--auto', '-m', args.model, prompt]
         with (run / 'opencode.log').open('w', encoding='utf-8') as log:
             result = subprocess.run(command, cwd=run, stdout=log, stderr=subprocess.STDOUT,
