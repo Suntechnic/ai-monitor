@@ -1,9 +1,17 @@
 # ai-monitor
 
 Короткий мониторинг ИИ для PHP/JS/Vue/HTML/CSS: DeepSeek, OpenRouter, OpenCode Go, Токенатор, Vantyr.
-Планировщик не включён. Linux, Python 3.9+, OpenCode v2; Python-пакеты не нужны.
+Планировщик не включён. Linux, Python 3.9+, OpenCode v2, PyYAML.
 
 ## Запуск
+
+Установите зависимости: `python3 -m pip install -r requirements.txt`.
+Скопируйте `vars.example.yml` в `vars.yml`, если локального конфига ещё нет.
+В `vars.yml` настраиваются URL, формат, название и условия доступа каждого поставщика.
+Поле `token` необязательно; если задано, скрипт отправляет `Authorization: Bearer <token>`.
+Для Токенатора укажите настоящий ключ в `tokenator.token`.
+Другой конфиг можно выбрать через `--config /absolute/path/vars.yml`.
+`vars.yml` исключён из Git; в manifest и промпт ключи не копируются.
 
 В OpenCode должна быть доступна `opencode/glm-5.3-flash-free` (по умолчанию).
 Подключите Tavily и задайте в глобальном конфиге
@@ -19,7 +27,7 @@ python3 ai_monitor.py --model tokenator/free-glm-5.3-flash
 
 Каждый запуск создаёт папку `reports/<дата-время-суффикс>/`:
 
-- `report.md` — таблица из 18 рекомендаций: 6 задач × 3 роли, новости и изменения.
+- `report.md` — таблица из 12 рекомендаций: 6 задач × 2 роли, новости и изменения.
 - `prices.md` — подробные цены, условия и расчёты.
 - `sources.md` — источники, отзывы и основания оценок.
 

@@ -1,0 +1,32 @@
+openrouter:
+  name: OpenRouter
+  url: https://openrouter.ai/api/v1/models
+  format: json
+  summary: openrouter
+  access: Оплата по токенам; только платные модели.
+  pricing_notes: В API pricing цены за один токен; умножай на 1000000 для USD за миллион. Агрегированная цена не гарантирована для каждого backend.
+deepseek:
+  name: DeepSeek напрямую
+  url: https://api-docs.deepseek.com/quick_start/pricing/
+  format: html
+  access: Оплата по токенам.
+  pricing_notes: Различай обычный вход, cache read и выход, учитывай peak/off-peak при наличии.
+opencode:
+  name: OpenCode Go
+  url: https://opencode.ai/v2/docs/console/go
+  format: html
+  access: Только модели в подписке Go; pay-as-you-go вне подписки не рассматривается. Мой тариф не указан.
+  pricing_notes: Пиши «включено в подписку» вместо цены вызова. Проверяй квоты и доступность на тарифе; не считай подписку бесплатной.
+tokenator:
+  name: Токенатор
+  token: REPLACE_WITH_REAL_TOKEN
+  url: https://api.tokenator.top/v1/models
+  format: json
+  access: Оплата из запаса токенов; только платные модели.
+  pricing_notes: Базовая цена миллиона токенов 0,27 USD. Если API возвращает множители, умножай базовую цену на подтверждённый множитель соответствующего вида токенов. Если возвращает цены, проверь их единицы. Не считай единый множитель одинаковым для входа и выхода без подтверждения условий. Наличие модели в /v1/models само по себе не подтверждает цену.
+vantyr:
+  name: Vantyr
+  url: https://vantyr.xyz/api/pricing
+  format: json
+  access: Оплата по токенам; доступность моделей может меняться.
+  pricing_notes: Отличай тариф продавца от official_* цен разработчика модели. Учитывай billing_mode, billing_expr и условия групп; не угадывай единицы коэффициентов.

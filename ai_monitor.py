@@ -13,17 +13,39 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MODEL = 'opencode/glm-5.3-flash-free'
-SOURCES = {
-    'openrouter.json': 'https://openrouter.ai/api/v1/models',
-    'deepseek.html': 'https://api-docs.deepseek.com/quick_start/pricing/',
-    'opencode.html': 'https://opencode.ai/v2/docs/console/models/',
-    'tokenator.html': 'https://tokenator.cloud/models',
-    'vantyr.html': 'https://vantyr.xyz/pricing'
-}
+
+def load_providers(path):
+    try:
+        import yaml
+    except ImportError:
+        raise RuntimeError('Install dependencies: python3 -m pip install -r requirements.txt') from None
+    providers = yaml.safe_load(path.read_text(encoding='utf-8'))
+    if not isinstance(providers, dict) or not providers:
+        raise ValueError('Provider config must be a non-empty mapping')
+    for key, provider in providers.items():
+        if not isinstance(key, str) or not key or any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789_-' for c in key):
+            raise ValueError('Invalid provider key')
+        if not isinstance(provider, dict):
+            raise ValueError(f'Invalid config for {key}')
+        for field in ('name', 'url', 'format', 'access', 'pricing_notes'):
+            if not isinstance(provider.get(field), str) or not provider[field].strip():
+                raise ValueError(f'Missing or invalid {field} for {key}')
+        if not provider['url'].startswith('https://'):
+            raise ValueError(f'HTTPS URL required for {key}')
+        if provider['format'] not in ('json', 'html'):
+            raise ValueError(f'Unsupported format for {key}')
+        if provider.get('summary') not in (None, 'openrouter'):
+            raise ValueError(f'Unsupported summary for {key}')
+        if 'token' in provider and (not isinstance(provider['token'], str) or not provider['token'].strip()):
+            raise ValueError(f'Invalid token for {key}')
+    return providers
 
 
-def fetch(url, target):
-    request = urllib.request.Request(url, headers={'User-Agent': 'ai-monitor/2.0'})
+def fetch(url, target, token=None):
+    headers = {'User-Agent': 'ai-monitor/2.0'}
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+    request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=60) as response:
         data = response.read(20_000_001)
     if len(data) > 20_000_000:
@@ -37,6 +59,7 @@ def main():
     parser.add_argument('--days', type=int, default=7)
     parser.add_argument('--timeout', type=int, default=1800)
     parser.add_argument('--allow-paid-model', action='store_true')
+    parser.add_argument('--config', type=Path, default=ROOT / 'vars.yml')
     args = parser.parse_args()
     if args.days < 1 or args.timeout < 1:
         parser.error('--days and --timeout must be positive')
@@ -45,6 +68,7 @@ def main():
         parser.error('Use the default free model or tokenator/free-*, or --allow-paid-model')
     if not shutil.which('opencode'):
         parser.error('opencode not found in PATH')
+    providers = load_providers(args.config)
     template = (ROOT / 'prompt.md').read_text(encoding='utf-8')
     for name in ('reports', 'runs'):
         (ROOT / name).mkdir(exist_ok=True)
@@ -56,20 +80,30 @@ def main():
         now = dt.datetime.now().astimezone()
         run = Path(tempfile.mkdtemp(prefix=now.strftime('%Y-%m-%d_%H-%M-%S-'), dir=ROOT / 'runs'))
         manifest = {'time': now.isoformat(), 'model': args.model, 'sources': []}
-        for name, url in SOURCES.items():
-            item = {'url': url, 'file': name}
+        for key, provider in providers.items():
+            url = provider['url']
+            name = f'{key}.{provider["format"]}'
+            item = {field: provider[field] for field in ('name', 'url', 'format', 'access', 'pricing_notes')}
+            item.update(provider=key, file=name, requires_auth=bool(provider.get('token')))
             try:
-                fetch(url, run / name)
-                item['status'] = 'ok'
-                if name == 'openrouter.json':
+                fetch(url, run / name, provider.get('token'))
+                if provider['format'] == 'json':
                     raw = json.loads((run / name).read_text(encoding='utf-8'))
+                item['status'] = 'ok'
+                if provider.get('summary') == 'openrouter':
                     models = [{k: m.get(k) for k in (
                         'id', 'name', 'context_length', 'pricing',
                         'supported_parameters', 'top_provider')} for m in raw.get('data', [])]
-                    (run / 'openrouter-summary.json').write_text(
+                    summary = f'{key}-summary.json'
+                    (run / summary).write_text(
                         json.dumps(models, ensure_ascii=False, indent=2), encoding='utf-8')
+                    item['file'] = summary
             except Exception as exc:
-                item.update(status='error', error=str(exc))
+                error = str(exc)
+                for configured in providers.values():
+                    if configured.get('token'):
+                        error = error.replace(configured['token'], '[REDACTED]')
+                item.update(status='error', error=error)
             manifest['sources'].append(item)
         (run / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
         previous = list((ROOT / 'reports').glob('*.md')) + list((ROOT / 'reports').glob('*/report.md'))
