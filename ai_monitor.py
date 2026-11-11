@@ -252,6 +252,7 @@ def main():
         rules = {
             'report.md': (500, ['# Мониторинг ИИ', '## Рекомендации', '## Новости', '## Изменения']),
             'prices.md': (200, ['# Цены', 'https://', '## Сравнение цен по моделям']),
+            'rating.md': (150, ['# Рейтинг моделей', 'Индекс']),
             'sources.md': (200, ['# Источники', 'https://']),
         }
         for name, (minimum, markers) in rules.items():
@@ -262,7 +263,7 @@ def main():
             if len(text) < minimum or any(marker not in text for marker in markers):
                 raise RuntimeError(f'Structural validation failed: {path}')
             if name == 'report.md':
-                if '\n|' not in text or 'prices.md' not in text or 'sources.md' not in text:
+                if '\n|' not in text or 'prices.md' not in text or 'rating.md' not in text or 'sources.md' not in text:
                     raise RuntimeError(f'Missing table or companion links: {path}')
                 if any(h in text for h in ('## Ограничения', '## Источники', '## Цены')):
                     raise RuntimeError(f'Unexpected detailed section: {path}')
