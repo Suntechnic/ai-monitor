@@ -7,11 +7,12 @@ PATCH /api/session/{id} и читается из /api/session вместе с т
 
 Команды:
   list                     все сессии с токенами: теги, папка, название, токены
-                           (окно 200 последних сессий, старые не участвуют)
+                           (окно LIMIT_SESSIONS последних сессий, старые не участвуют)
   tag <id|last|префикс> <ключ профиля>   поставить типовой тег («-» снять)
   show <id|last|префикс>   сырые поля одной сессии
   collect                  собрать локальные сессии и все хосты из stats-hosts.yml
                            по SSH, пересчитать runs/session-stats/summary.yml
+                           и runs/session-stats/models.yml
   collect --host имя       обновить только один хост
   collect --local          обновить только локальный снимок
   stats                    таблица по снимкам (без записи summary)
@@ -19,7 +20,20 @@ PATCH /api/session/{id} и читается из /api/session вместе с т
                            profiles.yml и репозитория (скрипт идёт через stdin)
 
 Снимки: runs/session-stats/<host>.json (local — для этой машины).
+Окно сбора: до LIMIT_SESSIONS последних сессий каждого хоста по времени
+обновления, без фильтрации по токенам. Для каждой сессии читается история
+сообщений (пагинация): из ответов ассистента извлекаются использованные
+агенты и модели (providerID + model.id) со временем сообщений. Снимки
+формата 2 содержат поля agents и models; снимки формата 1 пригодны
+только для токенной статистики.
+
 summary.yml совместим с profiles.yml: копируйте нужные блоки вручную.
+models.yml — использование моделей по паре providerID + model.id:
+sessions (уникальные сессии), tags, week (7 дней), month (30 дней),
+trand — изменение week относительно предыдущих 7 дней в процентах
+(null при росте с нуля, -100.0 при прекращении). Периоды считаются от
+времени формирования по времени сообщений модели; при обрезке выборки
+лимитом показатели могут быть занижены (отмечается в комментариях).
 """
 import argparse
 import datetime as dt
@@ -31,15 +45,19 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from pathlib import Path
 
 _SELF = globals().get('__file__')
 ROOT = Path(_SELF).resolve().parent if _SELF else Path.cwd()
 TAG_KEY = 'opencode-session-tags'
-FORMAT = 1
+FORMAT = 2
+LIMIT_SESSIONS = 200
+DAY_MS = 24 * 60 * 60 * 1000
 SNAPSHOT_DIR = ROOT / 'runs' / 'session-stats'
 SUMMARY_PATH = SNAPSHOT_DIR / 'summary.yml'
+MODELS_PATH = SNAPSHOT_DIR / 'models.yml'
 TAG_RE = re.compile(r'[a-z0-9_-]+')
 COLLECT_TIMEOUT = 600
 LOCAL_HOST = 'local'
@@ -51,12 +69,56 @@ def now_iso():
 
 
 def api(path):
+    """GET через opencode api; возвращает (data, cursor)."""
     result = subprocess.run([OPENCODE, 'api', 'get', path],
                             capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError(f'opencode api failed: {result.stderr.strip()}')
     data = json.loads(result.stdout)
-    return data.get('data', data) if isinstance(data, dict) else data
+    if isinstance(data, dict):
+        return data.get('data', data), data.get('cursor') or {}
+    return data, {}
+
+
+def _page_url(path, cursor):
+    """URL следующей страницы: исходные параметры + новый cursor."""
+    base, _, query = path.partition('?')
+    kept = [p for p in query.split('&') if p and not p.startswith('cursor=')]
+    prefix = base + '?' + ('&'.join(kept) + '&' if kept else '')
+    return f'{prefix}cursor={cursor}'
+
+
+def api_all(path, limit=None, limit_key='id'):
+    """GET с пагинацией по cursor.next; не более limit уникальных записей.
+
+    Возвращает (записи, True если достигнут limit). Записи без limit_key
+    не дедуплицируются между собой. Повтор курса — ошибка (защита от цикла).
+    """
+    items = []
+    seen = set()
+    page = path
+    seen_pages = set()
+    for _ in range(10000):
+        if page in seen_pages:
+            raise RuntimeError(f'opencode api: повтор курсора для {path}')
+        seen_pages.add(page)
+        data, cursor = api(page)
+        if not isinstance(data, list):
+            raise RuntimeError(f'opencode api: ожидался список для {path}')
+        for entry in data:
+            key = entry.get(limit_key) if isinstance(entry, dict) else None
+            fresh = key is None or key not in seen
+            if key is not None:
+                seen.add(key)
+            if fresh:
+                items.append(entry)
+                if limit is not None and len(items) >= limit:
+                    return items, True
+        nxt = cursor.get('next')
+        if not nxt:
+            return items, False
+        page = _page_url(path, nxt)
+    raise RuntimeError(f'opencode api: слишком много страниц для {path}')
 
 
 def patch_session(session_id, body):
@@ -71,15 +133,57 @@ def patch_session(session_id, body):
 def real_sessions():
     """Сессии с непустыми токенами, отсортированные по времени обновления.
 
-    Скользящее окно: 200 последних сессий, более старые не попадают.
+    Скользящее окно: LIMIT_SESSIONS последних сессий, более старые не попадают.
     """
-    items = [s for s in api('/api/session?limit=200') if s.get('tokens')]
+    items, _ = window_sessions()
+    items = [s for s in items if s.get('tokens')]
     items = [s for s in items
              if sum([s['tokens'].get('input', 0), s['tokens'].get('output', 0),
                      s['tokens'].get('reasoning', 0),
                      s['tokens'].get('cache', {}).get('read', 0)]) > 0]
     items.sort(key=lambda s: s.get('time', {}).get('updated', 0))
     return items
+
+
+def window_sessions():
+    """Окно сбора: LIMIT_SESSIONS последних сессий без фильтрации по токенам.
+
+    Запрашивает на одну сессию больше, чтобы отличить «ровно LIMIT_SESSIONS
+    сессий» (truncated=False) от «сессий больше лимита» (truncated=True).
+    """
+    items, _ = api_all('/api/session', limit=LIMIT_SESSIONS + 1)
+    truncated = len(items) > LIMIT_SESSIONS
+    items.sort(key=lambda s: s.get('time', {}).get('updated', 0))
+    return items[:LIMIT_SESSIONS], truncated
+
+
+def message_history(session_id):
+    """Все сообщения сессии с пагинацией."""
+    items, _ = api_all(f'/api/session/{session_id}/message', limit_key='id')
+    return items
+
+
+def session_models_and_agents(messages):
+    """Из сообщений: ({(providerID, modelID): [времена]}, set(агенты))."""
+    models = defaultdict(set)
+    agents = set()
+    for message in messages:
+        info = message.get('info') or message
+        if info.get('type') != 'assistant':
+            continue
+        created = (info.get('time') or {}).get('created')
+        agent = info.get('agent')
+        if agent:
+            agents.add(agent)
+        model = info.get('model') or {}
+        provider = model.get('providerID')
+        model_id = model.get('id')
+        if provider and model_id:
+            if created:
+                models[(provider, model_id)].add(int(created))
+            else:
+                models[(provider, model_id)].add(0)
+    return models, agents
 
 
 def tags_of(session):
@@ -90,9 +194,9 @@ def tags_of(session):
     return tags
 
 
-def session_record(session):
-    tokens = session['tokens']
-    return {
+def session_record(session, messages=None):
+    tokens = session.get('tokens') or {}
+    record = {
         'id': session['id'],
         'updated': (session.get('time') or {}).get('updated', 0),
         'tags': tags_of(session),
@@ -101,19 +205,38 @@ def session_record(session):
         'output': tokens.get('output', 0),
         'reasoning': tokens.get('reasoning', 0),
     }
+    if messages is not None:
+        models, agents = session_models_and_agents(messages)
+        record['models'] = [
+            {'provider': provider, 'model': model_id, 'times': sorted(times)}
+            for (provider, model_id), times in sorted(models.items())]
+        record['agents'] = sorted(agents)
+    return record
 
 
 def export_payload():
+    sessions, truncated = window_sessions()
+    records = []
+    for session in sessions:
+        try:
+            messages = message_history(session['id'])
+        except (RuntimeError, OSError) as exc:
+            raise RuntimeError(f'сессия {session["id"]}: {exc}') from None
+        records.append(session_record(session, messages))
     return {
         'format': FORMAT,
         'exported_at': now_iso(),
-        'sessions': [session_record(s) for s in real_sessions()],
+        'limit': LIMIT_SESSIONS,
+        'truncated': truncated,
+        'sessions': records,
     }
 
 
 def validate_export(data):
-    if not isinstance(data, dict) or data.get('format') != FORMAT or not isinstance(data.get('sessions'), list):
-        raise ValueError('неожиданный формат export')
+    """Проверяет export/снимок; формат 1 — только токены, формат 2 — с моделями."""
+    fmt = data.get('format') if isinstance(data, dict) else None
+    if fmt not in (1, FORMAT) or not isinstance(data.get('sessions'), list):
+        raise ValueError('неожиданный формат export (поддерживаются 1 и 2)')
     for session in data['sessions']:
         if not isinstance(session, dict) or not isinstance(session.get('id'), str) \
                 or not isinstance(session.get('updated'), int) \
@@ -121,6 +244,20 @@ def validate_export(data):
                 or not all(isinstance(t, str) for t in session['tags']) \
                 or any(not isinstance(session.get(k), int) for k in ('input', 'cache_read', 'output', 'reasoning')):
             raise ValueError('некорректная запись сессии в export')
+        if fmt < FORMAT:
+            continue
+        if not isinstance(session.get('models'), list) \
+                or not isinstance(session.get('agents'), list):
+            raise ValueError('некорректная запись сессии в export (нет моделей/агентов)')
+        for entry in session['models']:
+            if not isinstance(entry, dict) \
+                    or not isinstance(entry.get('provider'), str) \
+                    or not isinstance(entry.get('model'), str) \
+                    or not isinstance(entry.get('times'), list) \
+                    or any(not isinstance(t, int) for t in entry['times']):
+                raise ValueError(f'некорректная модель в сессии {session["id"]}')
+        if any(not isinstance(a, str) for a in session['agents']):
+            raise ValueError(f'некорректный агент в сессии {session["id"]}')
     return data['sessions']
 
 
@@ -182,11 +319,14 @@ def read_snapshots():
         try:
             snapshot = json.loads(path.read_text(encoding='utf-8'))
             host = snapshot['host']
-            sessions = validate_export({'format': FORMAT, 'sessions': snapshot['sessions']})
+            data = {'format': snapshot.get('format'), 'sessions': snapshot['sessions']}
+            sessions = validate_export(data)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise RuntimeError(f'Не читается снимок {path.name}: {exc}') from None
         sources.append({'host': host, 'collected_at': snapshot.get('collected_at') or '?',
-                        'count': len(sessions)})
+                        'count': len(sessions),
+                        'truncated': bool(snapshot.get('truncated')),
+                        'exported_at': snapshot.get('exported_at') or '?'})
         records.extend({**s, 'host': host} for s in sessions)
     return records, sources
 
@@ -225,6 +365,89 @@ def aggregate(records):
     return rows, untagged, multi
 
 
+def model_usage(records, now_ms=None):
+    """Использование моделей по записям снимков (формат 2).
+
+    Возвращает ({(provider, model): {'sessions', 'tags', 'week', 'month',
+    'trand'}}, число записей без поля models).
+    """
+    if now_ms is None:
+        now_ms = int(time.time() * 1000)
+    week_start, prev_start, prev_end, month_start = (
+        now_ms - 7 * DAY_MS, now_ms - 14 * DAY_MS, now_ms - 7 * DAY_MS,
+        now_ms - 30 * DAY_MS)
+    groups = defaultdict(lambda: {'sessions': set(), 'tags': set(),
+                                  'week': set(), 'prev_week': set(), 'month': set()})
+    legacy = 0
+    for record in records:
+        tags = {t for t in record['tags'] if t}
+        for entry in record.get('models') or []:
+            key = (entry['provider'], entry['model'])
+            group = groups[key]
+            group['sessions'].add(record['id'])
+            group['tags'] |= tags
+            for created in entry['times']:
+                if created >= month_start:
+                    group['month'].add(record['id'])
+                if created >= week_start:
+                    group['week'].add(record['id'])
+                if prev_start <= created < prev_end:
+                    group['prev_week'].add(record['id'])
+        if record.get('models') is None:
+            legacy += 1
+    rows = {}
+    for (provider, model_id), group in sorted(groups.items()):
+        week, prev = len(group['week']), len(group['prev_week'])
+        if prev == 0:
+            trand = None if week > 0 else 0.0
+        else:
+            trand = round((week - prev) / prev * 100, 1)
+        rows[(provider, model_id)] = {
+            'sessions': len(group['sessions']),
+            'tags': sorted(group['tags']),
+            'week': week,
+            'month': len(group['month']),
+            'trand': trand,
+        }
+    return rows, legacy
+
+
+def render_models(rows, sources, legacy, generated):
+    import yaml
+    header = [f'# Использование моделей по сообщениям сессий (провайдер + модель)',
+              f'# Сформировано: {generated}',
+              f'# Окно: до {LIMIT_SESSIONS} последних сессий каждого хоста (LIMIT_SESSIONS)',
+              '# Единица: уникальная сессия, в которой модель отвечала; week — за 7 дней,',
+              '# month — за 30 дней, trand — % изменения week к предыдущим 7 дням',
+              '# (null — рост с нуля; 0.0 — не использовалась в обоих периодах).',
+              '# Периоды считаются по времени сообщений от момента формирования;',
+              '# при обрезке выборки лимитом показатели могут быть занижены.',
+              '# Источники:']
+    full_month = True
+    for s in sources:
+        header.append(f"#   {s['host']}: собрано {s['collected_at']}, сессий {s['count']}"
+                      + (', ВЫБОРКА ОБРЕЗАНА ЛИМИТОМ' if s['truncated'] else ''))
+        if s['truncated']:
+            full_month = False
+    if legacy:
+        header.append(f'# ВНИМАНИЕ: снимков формата 1 (без данных о моделях) — {legacy};'
+                      ' статистика по ним неполна, выполните collect')
+    if not full_month:
+        header.append('# ВНИМАНИЕ: хотя бы один хост обрезан лимитом;'
+                      ' week/month/trand могут быть занижены')
+    data = {}
+    for (provider, model_id), row in rows.items():
+        data.setdefault(provider, {})[model_id] = {
+            'sessions': row['sessions'],
+            'tags': row['tags'],
+            'week': row['week'],
+            'month': row['month'],
+            'trand': row['trand'],
+        }
+    body = yaml.safe_dump(data, allow_unicode=True, sort_keys=False, default_flow_style=False) if data else '{}\n'
+    return '\n'.join(header) + '\n\n' + body
+
+
 def print_table(rows, untagged, multi, total):
     print(f"{'тег':14} {'n':>3} | {'вход':>12} {'кеш':>12} {'выход+reas':>11} |"
           f" {'вход(med)':>12} {'кеш(med)':>12} {'выход(med)':>12}")
@@ -244,14 +467,31 @@ def print_sources(sources):
         print(f"  {s['host']}: {s['count']} сессий (собрано {s['collected_at']})")
 
 
+def print_models(rows):
+    if not rows:
+        print('модели: нет данных формата 2, выполните collect')
+        return
+    print(f"{'провайдер':16} {'модель':28} {'сессий':>6} {'нед':>4} {'30д':>4} {'тренд%':>7}  теги")
+    for (provider, model_id), row in rows.items():
+        trand = 'null' if row['trand'] is None else f"{row['trand']:+.1f}"
+        tags = ','.join(row['tags']) or '—'
+        print(f"{provider:16} {model_id:28} {row['sessions']:6} {row['week']:4} "
+              f"{row['month']:4} {trand:>7}  {tags}")
+
+
 def cmd_stats(args):
     records, sources = read_snapshots()
     if not sources:
         raise RuntimeError('нет снимков: сначала запустите collect')
     records = dedupe(records)
     rows, untagged, multi = aggregate(records)
+    models, legacy = model_usage(records)
     print_sources(sources)
     print_table(rows, untagged, multi, len(records))
+    print()
+    print_models(models)
+    if legacy:
+        print(f'внимание: {legacy} записей формата 1 без данных о моделях')
 
 
 def load_titles(path):
@@ -303,8 +543,14 @@ def write_atomic(path, text):
         raise
 
 
-def snapshot_of(host, exported_at, sessions):
-    return {'host': host, 'collected_at': now_iso(), 'exported_at': exported_at, 'sessions': sessions}
+def snapshot_of(host, payload, sessions):
+    return {'host': host,
+            'format': FORMAT,
+            'collected_at': now_iso(),
+            'exported_at': payload['exported_at'],
+            'limit': payload.get('limit', LIMIT_SESSIONS),
+            'truncated': bool(payload.get('truncated')),
+            'sessions': sessions}
 
 
 def load_hosts(path):
@@ -361,8 +607,9 @@ def cmd_collect(args):
     if args.local or not args.host:
         try:
             payload = export_payload()
-            write_snapshot(LOCAL_HOST, snapshot_of(LOCAL_HOST, payload['exported_at'], payload['sessions']))
-            print(f"{LOCAL_HOST}: {len(payload['sessions'])} сессий")
+            write_snapshot(LOCAL_HOST, snapshot_of(LOCAL_HOST, payload, payload['sessions']))
+            print(f"{LOCAL_HOST}: {len(payload['sessions'])} сессий"
+                  + (' (выборка обрезана лимитом)' if payload.get('truncated') else ''))
         except (RuntimeError, ValueError, OSError) as exc:
             failed.append(LOCAL_HOST)
             print(f"{LOCAL_HOST}: ОШИБКА: {exc} (прежний снимок сохранён)", file=sys.stderr)
@@ -371,8 +618,9 @@ def cmd_collect(args):
         try:
             data = fetch_host(host, script)
             sessions = validate_export(data)
-            write_snapshot(host['name'], snapshot_of(host['name'], data.get('exported_at'), sessions))
-            print(f"{host['name']}: {len(sessions)} сессий")
+            write_snapshot(host['name'], snapshot_of(host['name'], data, sessions))
+            print(f"{host['name']}: {len(sessions)} сессий"
+                  + (' (выборка обрезана лимитом)' if data.get('truncated') else ''))
         except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
             failed.append(host['name'])
             print(f"{host['name']}: ОШИБКА: {exc} (прежний снимок сохранён)", file=sys.stderr)
@@ -382,8 +630,12 @@ def cmd_collect(args):
     records = dedupe(records)
     rows, untagged, multi = aggregate(records)
     titles = load_titles(args.profiles)
-    write_atomic(SUMMARY_PATH, render_summary(rows, untagged, multi, len(records), sources, titles, now_iso()))
+    generated = now_iso()
+    write_atomic(SUMMARY_PATH, render_summary(rows, untagged, multi, len(records), sources, titles, generated))
     print(f'summary: {SUMMARY_PATH} (тегов {len(rows)}, сессий {len(records)})')
+    models, legacy = model_usage(records)
+    write_atomic(MODELS_PATH, render_models(models, sources, legacy, generated))
+    print(f'models: {MODELS_PATH} (моделей {len(models)})')
     if failed:
         print('Частичный сбор, не удалось: ' + ', '.join(failed), file=sys.stderr)
         sys.exit(1)
