@@ -186,6 +186,12 @@ def main():
         manifest = {'time': now.isoformat(), 'model': args.model, 'sources': []}
         shutil.copyfile(args.profiles, run / 'profiles.yml')
         manifest['profiles'] = {'file': 'profiles.yml', 'count': len(profiles)}
+        session_models_source = ROOT / 'runs' / 'session-stats' / 'models.yml'
+        if session_models_source.is_file():
+            shutil.copyfile(session_models_source, run / 'session-models.yml')
+            manifest['session_models'] = {'file': 'session-models.yml', 'status': 'ok'}
+        else:
+            manifest['session_models'] = {'status': 'missing'}
         for key, provider in providers.items():
             url = provider['url']
             name = f'{key}.{provider["format"]}'
@@ -245,7 +251,7 @@ def main():
             raise RuntimeError(f'OpenCode exited {result.returncode}; see {run}/opencode.log')
         rules = {
             'report.md': (500, ['# Мониторинг ИИ', '## Рекомендации', '## Новости', '## Изменения']),
-            'prices.md': (200, ['# Цены', 'https://']),
+            'prices.md': (200, ['# Цены', 'https://', '## Сравнение цен по моделям']),
             'sources.md': (200, ['# Источники', 'https://']),
         }
         for name, (minimum, markers) in rules.items():
