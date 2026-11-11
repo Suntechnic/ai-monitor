@@ -7,6 +7,7 @@ PATCH /api/session/{id} и читается из /api/session вместе с т
 
 Команды:
   list                     все сессии с токенами: теги, папка, название, токены
+                           (окно 200 последних сессий, старые не участвуют)
   tag <id|last|префикс> <ключ профиля>   поставить типовой тег («-» снять)
   show <id|last|префикс>   сырые поля одной сессии
   collect                  собрать локальные сессии и все хосты из stats-hosts.yml
@@ -68,8 +69,11 @@ def patch_session(session_id, body):
 
 
 def real_sessions():
-    """Сессии с непустыми токенами, отсортированные по времени обновления."""
-    items = [s for s in api('/api/session') if s.get('tokens')]
+    """Сессии с непустыми токенами, отсортированные по времени обновления.
+
+    Скользящее окно: 200 последних сессий, более старые не попадают.
+    """
+    items = [s for s in api('/api/session?limit=200') if s.get('tokens')]
     items = [s for s in items
              if sum([s['tokens'].get('input', 0), s['tokens'].get('output', 0),
                      s['tokens'].get('reasoning', 0),
