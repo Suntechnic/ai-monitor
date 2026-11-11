@@ -21,6 +21,27 @@
 Другой файл профилей: `--profiles /absolute/path/profiles.yml`;
 `--dry-run` готовит снимки, manifest и промпт и выходит до запуска OpenCode.
 
+## Пометки сессий и калибровка
+
+Числа в `profiles.yml` — средние по реальным сессиям. Чтобы накапливать
+данные, помечайте сессии тегом — он хранится в `metadata.tag` сессии
+OpenCode и читается из `/api/session` вместе с токенами:
+
+```bash
+python3 session_stats.py list              # все сессии: тег, папка, токены, $
+python3 session_stats.py tag last php      # пометить последнюю сессию
+python3 session_stats.py tag <id-префикс> php-tosir
+python3 session_stats.py tag <id-префикс> -   # снять тег
+python3 session_stats.py stats             # средние по тегам: вход/кеш/выход
+python3 session_stats.py show <id-префикс> # сырые поля сессии
+```
+
+Рекомендуемые теги: `admin`, `ii`, `scripting`, `php`, `php-tosir`.
+Порядок работы: завершили задачу — `tag last <тег>`; накопилось — `stats`
+и перенос средних в `profiles.yml` (колонки stats соответствуют `input`,
+`cache_read` и `output+reasoning`). Теги локальны для машины: статистику
+с других машин перенесите вручную или соберите тем же скриптом там.
+
 В OpenCode должна быть доступна `opencode/glm-5.3-flash-free` (по умолчанию).
 Подключите Tavily и задайте в глобальном конфиге
 `"websearch": {"provider": "tavily"}`. Ключи в репозитории не хранятся.
