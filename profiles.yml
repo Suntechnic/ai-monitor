@@ -5,57 +5,45 @@
 # конкретной задачи: реальные задачи отличаются от среднего в разы.
 # note — происхождение цифр; обновляйте по реальным сессиям OpenCode
 # (opencode api get /api/session — поля tokens.input/output/reasoning/cache).
-simple:
-  title: Быстрые простые ответы
-  input: 2000
-  output: 500
-  cache_read: 0
-  note: короткая сессия почти равна одному вызову; цифры прежние, замеров немного
 admin:
   title: Администрирование серверов
-  input: 550000
-  output: 700000
-  cache_read: 25000
-  note:
-makeup:
-  title: Вёрстка и правки CSS/HTML
-  input: 8000
-  output: 2000
-  cache_read: 0
-  note: перенесено из прежнего промпта; замеров по реальным сессиям нет
-php:
-  title: Небольшие PHP скрипты, функции или PHP-классы
-  input: 356000
-  output: 8000
-  cache_read: 307000
-  note: среднее по группе «PHP» (мелкая разработка, сессия целиком); группа «ии» близка по порядку — вход 730K, кеш 79K, выход 16K
-vue:
-  title: Vue-компонент
-  input: 356000
-  output: 8000
-  cache_read: 307000
-  note: среднее по группе «PHP» (мелкая разработка, сессия целиком); группа «ии» близка по порядку — вход 730K, кеш 79K, выход 16K
-php-tosir:
-  title: Цикл разработки tosir
-  input: 2827000
-  output: 46000
-  cache_read: 1735000
-  note: среднее по группе «PHP-tosir» (сессия целиком, планирование-реализация-ревью не разделены); разбивка по этапам будет позже
-php-pln:
-  title: Планирование сложной многофайловой проектной работы
-  input: 2827000
-  output: 46000
-  cache_read: 1735000
-  note: среднее по группе «PHP-tosir» (сессия целиком, планирование-реализация-ревью не разделены); разбивка по этапам будет позже
+  input: 815520
+  output: 28976
+  cache_read: 683951
+  note: 'n=14; медианы: input=90104, cache_read=65318, output=18980'
+ai:
+  title: ai
+  input: 1958428
+  output: 52671
+  cache_read: 1519655
+  note: 'n=6; медианы: input=2334330, cache_read=78826, output=13883'
+monitor:
+  title: monitor
+  input: 1064477
+  output: 16662
+  cache_read: 89270
+  note: 'n=10; медианы: input=1016611, cache_read=2112, output=13400'
 php-imp:
   title: Реализация подготовленного плана
-  input: 2827000
-  output: 46000
-  cache_read: 1735000
-  note: как у php-pln; замеры по этапам будут позже
+  input: 11222504
+  output: 189104
+  cache_read: 8675904
+  note: 'n=1; медианы: input=11222504, cache_read=8675904, output=189104'
+php-pln:
+  title: Планирование сложной многофайловой проектной работы
+  input: 743017
+  output: 11558
+  cache_read: 0
+  note: 'n=3; медианы: input=623091, cache_read=0, output=12124'
 php-rvw:
   title: Проверка реализации
-  input: 2827000
-  output: 46000
-  cache_read: 1735000
-  note: как у php-pln; замеры по этапам будут позже
+  input: 683348
+  output: 6635
+  cache_read: 0
+  note: 'n=1; медианы: input=683348, cache_read=0, output=6635'
+simple:
+  title: Быстрые простые ответы
+  input: 71122
+  output: 1954
+  cache_read: 38418
+  note: 'n=8; медианы: input=19930, cache_read=0, output=732'
