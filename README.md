@@ -6,7 +6,7 @@
 ## Запуск
 
 Установите зависимости: `python3 -m pip install -r requirements.txt`.
-Скопируйте `vars.example.yml` в `providers.yml`, если локального конфига ещё нет.
+Скопируйте `providers.example.yml` в `providers.yml`, если локального конфига ещё нет.
 В `providers.yml` настраиваются URL, формат, название и условия доступа каждого поставщика.
 Поле `token` необязательно; если задано, скрипт отправляет `Authorization: Bearer <token>`.
 Другой конфиг можно выбрать через `--config /absolute/path/providers.yml`.
@@ -23,24 +23,60 @@
 
 ## Пометки сессий и калибровка
 
-Числа в `profiles.yml` — средние по реальным сессиям. Чтобы накапливать
-данные, помечайте сессии тегом — он хранится в `metadata.tag` сессии
-OpenCode и читается из `/api/session` вместе с токенами:
+Числа в `profiles.yml` — средние по реальным сессиям. Сессии помечаются
+типовым тегом, равным ключу профиля; каталог тегов берётся из `profiles.yml`,
+а не из конфига плагина. Для пометок в TUI достаточно установленного плагина
+[opencode-session-tags](https://github.com/isturiz/opencode-session-tags)
+(одна строка в `cli.json`); теги хранятся в
+`metadata["opencode-session-tags"]["tags"]`. Наш `tag` пишет тот же формат,
+сохраняя рабочие теги плагина (`done`, `in-progress`...) — они в расчётах не участвуют:
 
 ```bash
-python3 session_stats.py list              # все сессии: тег, папка, токены, $
-python3 session_stats.py tag last php      # пометить последнюю сессию
+python3 session_stats.py list              # все сессии: теги, папка, токены, $
+python3 session_stats.py tag last php      # заменить типовой тег последней сессии
 python3 session_stats.py tag <id-префикс> php-tosir
-python3 session_stats.py tag <id-префикс> -   # снять тег
-python3 session_stats.py stats             # средние по тегам: вход/кеш/выход
+python3 session_stats.py tag <id-префикс> -   # снять типовой тег
+python3 session_stats.py stats             # среднее и медиана по профилям
 python3 session_stats.py show <id-префикс> # сырые поля сессии
 ```
 
-Рекомендуемые теги: `admin`, `ii`, `scripting`, `php`, `php-tosir`.
-Порядок работы: завершили задачу — `tag last <тег>`; накопилось — `stats`
-и перенос средних в `profiles.yml` (колонки stats соответствуют `input`,
-`cache_read` и `output+reasoning`). Теги локальны для машины: статистику
-с других машин перенесите вручную или соберите тем же скриптом там.
+В TUI: Ctrl+P → Edit current session tags (или `/session-tags`).
+Добавление задачи: новый профиль в `profiles.yml` плюс тот же ключ
+в `extraTags` плагина в `~/.config/opencode/cli.json`; строки отчёта и
+словарь статистики расширятся сами. Теги плагина без одноимённого профиля
+(`ai`, `scripting`) показываются отдельной строкой «вне каталога».
+На одну сессию держите один типовой тег; при нескольких она попадёт
+в каждую группу с предупреждением.
+
+Порядок работы: завершили задачу — `tag last <ключ>` или пометка в TUI;
+накопилось — `stats` и перенос средних (или медиан) в `profiles.yml`.
+Теги локальны для машины: на другой ставится только плагин.
+
+### Сбор статистики с других машин (по SSH)
+
+Управляющая машина сама подключается к удалённым по SSH и запускает там
+`export`. На удалёнке ничего не устанавливается: скрипт передаётся через stdin.
+Нужны: SSH-доступ без пароля (`BatchMode=yes`), Python 3 и `opencode` на удалёнке.
+
+```bash
+cp stats-hosts.example.yml stats-hosts.yml   # заполните; файл исключён из Git
+python3 session_stats.py collect             # локальная машина + все хосты + summary
+python3 session_stats.py collect --host notebook   # только один хост
+python3 session_stats.py collect --local     # только эта машина, без SSH
+python3 session_stats.py stats               # таблица по снимкам, без записи
+```
+
+Снимки: `runs/session-stats/<host>.json` (`local.json` — эта машина), по одному на
+хост, перезаписываются. Если хост недоступен, его прежний снимок сохраняется и
+участвует в расчёте, а команда завершается ненулевым кодом. Дубликаты `(host, id)`
+берутся по наибольшему `updated`.
+
+`runs/session-stats/summary.yml` пересчитывается при каждом `collect` и совместим
+с `profiles.yml`: верхний уровень — теги, у каждого `title`, `input`, `output`
+(среднее `output + reasoning`), `cache_read`, `note` с медианами. Служебные
+сведения (источники, даты сбора, мультитеги) — в комментариях файла. Нужные блоки
+копируйте в `profiles.yml` вручную; `profiles.yml` для сбора и расчёта не нужен.
+Все теги попадают в summary, в том числе рабочие плагина; отбирайте сами.
 
 В OpenCode должна быть доступна `opencode/glm-5.3-flash-free` (по умолчанию).
 Подключите Tavily и задайте в глобальном конфиге

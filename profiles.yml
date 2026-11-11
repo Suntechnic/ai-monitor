@@ -36,7 +36,7 @@ vue:
   cache_read: 307000
   note: среднее по группе «PHP» (мелкая разработка, сессия целиком); группа «ии» близка по порядку — вход 730K, кеш 79K, выход 16K
 php-tosir:
-  title: Цикл раработки tosir
+  title: Цикл разработки tosir
   input: 2827000
   output: 46000
   cache_read: 1735000
@@ -52,10 +52,10 @@ php-imp:
   input: 2827000
   output: 46000
   cache_read: 1735000
-  note: как у planning; замеры по этапам будут позже
+  note: как у php-pln; замеры по этапам будут позже
 php-rvw:
   title: Проверка реализации
   input: 2827000
   output: 46000
   cache_read: 1735000
-  note: как у planning; замеры по этапам будут позже
+  note: как у php-pln; замеры по этапам будут позже

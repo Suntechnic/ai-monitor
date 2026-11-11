@@ -1,0 +1,10 @@
+# Скопируйте в stats-hosts.yml (файл исключён из Git) и заполните.
+# Пароли и ключи сюда не пишутся: используется уже настроенный SSH
+# (~/.ssh/config, ключи, ssh-agent). Вход по паролю не поддерживается.
+hosts:
+  - name: server1
+    ssh: alex@server1.example.com
+  - name: notebook
+    ssh: notebook            # alias из ~/.ssh/config
+    python: python3          # необязательно, по умолчанию python3
+    opencode: /home/alex/.opencode/bin/opencode   # необязательно, по умолчанию opencode
