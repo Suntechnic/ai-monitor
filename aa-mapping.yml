@@ -1,8 +1,11 @@
 # Только однозначные соответствия. Не переносить оценки между версиями.
 # Ключи и значения нормализуются: регистр, точки, пробелы и namespace продавца не важны.
+# С 2026-11 значения сопоставляются со slug каталога Data API (/language/models/free).
 aliases:
   # Прямой alias DeepSeek; проверить соответствие версии при смене API-маршрута.
   deepseek-flash: deepseek-v4-1-flash-1017
+  # Написание в session-models отличается от slug каталога AA.
+  qwen-3-8-27b: qwen3-8-27b
 labels:
   qwen-3-8-27b: Qwen3.8 27B
   qwen3-14b: Qwen3 14B

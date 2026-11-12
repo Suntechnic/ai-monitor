@@ -253,12 +253,13 @@ def main():
                         error = error.replace(configured['token'], '[REDACTED]')
                 item.update(status='error', error=error)
             manifest['sources'].append(item)
-        aa_item = {'name': 'Artificial Analysis', 'url': fetch_aa.AA_URL}
+        aa_item = {'name': 'Artificial Analysis', 'url': fetch_aa.API_URL,
+                   'methodology_url': fetch_aa.METHODOLOGY_URL}
         try:
             aa_snapshot, aa_cached = fetch_aa.fetch_snapshot(
-                run / 'aa-coding.json', offline=args.skip_fetch)
+                run / 'aa-models.json', offline=args.skip_fetch)
             aa_item.update(
-                file='aa-coding.json', status='ok', cached=aa_cached,
+                file='aa-models.json', status='ok', cached=aa_cached,
                 fetched_at=aa_snapshot['fetched_at'], index=aa_snapshot['index'],
                 models=len(aa_snapshot['best_models']),
             )
@@ -291,14 +292,14 @@ def main():
         if result.returncode:
             raise RuntimeError(f'OpenCode exited {result.returncode}; see {run}/opencode.log')
         if aa_item['status'] == 'ok':
-            rating_snapshot = fetch_aa.load_snapshot(run / 'aa-coding.json')
+            rating_snapshot = fetch_aa.load_snapshot(run / 'aa-models.json')
         else:
             rating_snapshot = fetch_aa.empty_snapshot(aa_item['error'])
         fetch_aa.refresh_rating(rating_snapshot, output, run / 'session-models.yml')
         rules = {
             'report.md': (500, ['# Мониторинг ИИ', '## Рекомендации', '## Новости', '## Изменения']),
             'prices.md': (200, ['# Цены', 'https://', '## Сравнение цен по моделям']),
-            'rating.md': (150, ['# Рейтинг моделей', 'Artificial Analysis', 'AA Index']),
+            'rating.md': (150, ['# Рейтинг моделей', 'Artificial Analysis', 'Intelligence Index']),
             'sources.md': (200, ['# Источники', 'https://', 'Artificial Analysis']),
         }
         for name, (minimum, markers) in rules.items():

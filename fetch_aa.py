@@ -3,43 +3,25 @@
 import argparse
 import datetime as dt
 import html
-from html.parser import HTMLParser
 import json
 import math
+import os
 from pathlib import Path
 import re
 import sys
+import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parent
 AA_URL = "https://artificialanalysis.ai/agents/coding-agents"
 METHODOLOGY_URL = "https://artificialanalysis.ai/methodology/coding-agents-benchmarking"
-DEFAULT_CACHE = ROOT / "runs" / "artificial-analysis" / "coding-agents.json"
+API_URL = "https://artificialanalysis.ai/api/v2/language/models/free"
+KEY_ENV = "AA_API_KEY"
+DEFAULT_KEY_FILE = ROOT / ".env"
+DEFAULT_CACHE = ROOT / "runs" / "artificial-analysis" / "models-free.json"
 DEFAULT_REPORTS = ROOT / "reports" / "actual"
 DEFAULT_SESSION_MODELS = ROOT / "runs" / "session-stats" / "models.yml"
 DEFAULT_MAPPING = ROOT / "aa-mapping.yml"
-
-
-class _Scripts(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self._active = False
-        self._buffer = []
-        self.scripts = []
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "script":
-            self._active = True
-            self._buffer = []
-
-    def handle_endtag(self, tag):
-        if tag == "script" and self._active:
-            self.scripts.append("".join(self._buffer))
-            self._active = False
-
-    def handle_data(self, data):
-        if self._active:
-            self._buffer.append(data)
 
 
 def normalize_model(value):
@@ -52,142 +34,140 @@ def normalize_model(value):
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", value)).strip("-")
 
 
-def _next_text(html_text):
-    parser = _Scripts()
-    parser.feed(html_text)
-    for script in parser.scripts:
-        match = re.fullmatch(r"self\.__next_f\.push\((.*)\)", script, re.S)
-        if not match:
-            continue
-        try:
-            args = json.loads(match.group(1))
-        except ValueError:
-            continue
-        if len(args) > 1 and isinstance(args[1], str):
-            yield args[1]
-
-
-def _benchmark_key(dataset_id):
-    known = {
-        "frontiercode-v1.1-main": "frontiercode",
-        "terminal-bench-v4": "terminal_bench",
-        "swe-atlas-qna": "swe_atlas_qna",
-    }
-    return known.get(dataset_id, normalize_model(dataset_id).replace("-", "_"))
-
-
-def _score(value):
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    if not math.isfinite(value) or not 0 <= value <= 1:
-        return None
-    return round(value * 100, 4)
-
-
-def parse_aa(html_text, fetched_at=None):
-    """Extract model variants embedded in the public Next.js page."""
-    rows = {}
-    for text in _next_text(html_text):
-        for match in re.finditer(r'\{\s*"id"\s*:\s*"[a-f0-9]{32}"', text):
-            try:
-                row, _ = json.JSONDecoder().raw_decode(text[match.start():])
-            except ValueError:
+def load_api_key(environ=None, path=DEFAULT_KEY_FILE):
+    """Return the AA API key from the environment or a .env file, else None."""
+    env = os.environ if environ is None else environ
+    key = env.get(KEY_ENV)
+    if key and key.strip():
+        return key.strip()
+    if Path(path).is_file():
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
                 continue
-            if "indexScore" in row:
-                rows[row["id"]] = row
-    if not rows:
-        raise ValueError("Artificial Analysis benchmark rows not found; page format may have changed")
+            name, _, value = line.partition("=")
+            if name.strip() == KEY_ENV:
+                value = value.strip().strip('"').strip("'").strip()
+                if value:
+                    return value
+    return None
 
-    variants = []
-    for row in rows.values():
-        model = row.get("model") or {}
-        release = model.get("release") or {}
-        name = release.get("name")
-        slug = release.get("slug")
-        score = _score(row.get("indexScore"))
-        if not name or not slug or score is None:
-            continue  # Router-only agents cannot be attributed to one model.
-        evaluations = []
-        for evaluation in row.get("evals") or []:
-            component_score = _score((evaluation.get("mean") or {}).get("reward"))
-            if component_score is None:
-                continue
-            evaluations.append({
-                "id": evaluation.get("datasetIndexName"),
-                "name": evaluation.get("evaluationDatasetSlug"),
-                "key": _benchmark_key(evaluation.get("datasetIndexName", "")),
-                "score": component_score,
-                "weight": evaluation.get("weight"),
-            })
-        component_count = row.get("indexComponentCount")
-        complete = (
-            isinstance(component_count, int)
-            and component_count >= 3
-            and len(evaluations) == component_count
-            and not row.get("isUnavailable", False)
-        )
-        effort = (model.get("effort") or {}).get("slug") or model.get("shortSuffix")
-        mean = row.get("mean") or {}
-        variants.append({
-            "release_slug": slug,
-            "model_key": normalize_model(slug),
-            "model": name,
-            "variant": model.get("name") or name,
-            "effort": effort,
-            "agent": row.get("agentName"),
-            "index_score": score,
-            "components": evaluations,
-            "complete_index": complete,
-            "cost_per_task_usd": mean.get("costUsd"),
-            "time_per_task_seconds": mean.get("agentWallTimeSec"),
+
+def _api_request(url, key, timeout):
+    request = urllib.request.Request(url, headers={"User-Agent": "ai-monitor/2.0", "x-api-key": key})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read(20_000_001)
+    except urllib.error.HTTPError as exc:
+        details = {
+            "401": "invalid or missing API key",
+            "403": "subscription tier does not cover this endpoint",
+            "429": "rate limit exceeded",
+        }.get(str(exc.code), exc.reason)
+        if exc.code == 429 and exc.headers:
+            retry_after = exc.headers.get("Retry-After")
+            if retry_after:
+                details += f"; retry after {retry_after}s"
+        raise RuntimeError(f"Artificial Analysis API error {exc.code}: {details}") from exc
+    if len(body) > 20_000_000:
+        raise ValueError("Artificial Analysis API response exceeds 20 MB")
+    return json.loads(body.decode("utf-8"))
+
+
+def fetch_models(key, timeout=60, url=API_URL):
+    """Return (items, meta) for every page of the free model catalog."""
+    if key is None:
+        raise RuntimeError("AA_API_KEY is not set; add it to the environment or .env")
+    items = []
+    meta = None
+    for page in range(1, 21):
+        payload = _api_request(f"{url}?page={page}", key, timeout)
+        if not isinstance(payload.get("data"), list):
+            raise ValueError("Artificial Analysis API response has no data list")
+        if meta is None:
+            meta = payload
+        elif payload.get("tier") != meta.get("tier") or payload.get(
+            "intelligence_index_version"
+        ) != meta.get("intelligence_index_version"):
+            raise ValueError("Artificial Analysis API pages disagree on tier or index version")
+        items.extend(payload["data"])
+        if not (payload.get("pagination") or {}).get("has_more"):
+            return items, meta
+    raise ValueError("Artificial Analysis API pagination does not end within 20 pages")
+
+
+def parse_api(items, meta, fetched_at=None):
+    """Build a schema_version 2 snapshot from the free model catalog."""
+    version = meta.get("intelligence_index_version")
+    if version is None or not items:
+        raise ValueError("Artificial Analysis returned no model catalog or index version")
+    models = []
+    for item in items:
+        evaluations = item.get("evaluations") or {}
+        pricing = item.get("pricing") or {}
+        creator = item.get("model_creator") or {}
+        index = evaluations.get("artificial_analysis_intelligence_index")
+        if isinstance(index, bool) or not isinstance(index, (int, float)) or not math.isfinite(index):
+            index = None
+        else:
+            index = round(float(index), 4)
+        models.append({
+            "slug": item.get("slug"),
+            "model": item.get("name"),
+            "creator": creator.get("name"),
+            "release_date": item.get("release_date"),
+            "intelligence_index": index,
+            "pricing": {
+                "input": pricing.get("price_1m_input_tokens"),
+                "output": pricing.get("price_1m_output_tokens"),
+            },
         })
-    if not variants:
-        raise ValueError("Artificial Analysis returned no attributable model results")
-
-    best = {}
-    for variant in variants:
-        if not variant["complete_index"]:
-            continue
-        key = variant["model_key"]
-        if key not in best or variant["index_score"] > best[key]["index_score"]:
-            best[key] = variant
+    models.sort(key=lambda item: (
+        item["intelligence_index"] is None,
+        -(item["intelligence_index"] or 0),
+        item["model"] or "",
+    ))
+    best = [model for model in models if model["intelligence_index"]]
     if not best:
-        raise ValueError("Artificial Analysis returned no complete model indexes")
-    version = re.search(r"Artificial Analysis Coding Agent Index v([0-9.]+) incorporates", html_text)
+        raise ValueError("Artificial Analysis returned no models with an Intelligence Index")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "source": "Artificial Analysis",
-        "url": AA_URL,
+        "url": API_URL,
         "methodology_url": METHODOLOGY_URL,
+        "api_url": API_URL,
         "fetched_at": fetched_at or dt.datetime.now().astimezone().isoformat(),
         "index": {
-            "name": "Artificial Analysis Coding Agent Index",
-            "version": version.group(1) if version else "unknown",
-            "method": "AA composite; equal weight of its benchmark components",
+            "name": "Artificial Analysis Intelligence Index",
+            "version": str(version),
+            "method": "AA Intelligence Index over model catalog",
         },
-        "best_models": sorted(best.values(), key=lambda item: (-item["index_score"], item["model"])),
-        "variants": sorted(variants, key=lambda item: (item["model"], -(item["index_score"]))),
+        "tier": meta.get("tier"),
+        "models": models,
+        "best_models": best,
     }
 
 
 def empty_snapshot(reason="Снимок Artificial Analysis недоступен"):
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "source": "Artificial Analysis",
-        "url": AA_URL,
+        "url": API_URL,
         "methodology_url": METHODOLOGY_URL,
+        "api_url": API_URL,
         "fetched_at": dt.datetime.now().astimezone().isoformat(),
         "available": False,
         "error": reason,
-        "index": {"name": "Artificial Analysis Coding Agent Index", "version": "unknown"},
+        "index": {"name": "Artificial Analysis Intelligence Index", "version": "unknown"},
+        "tier": None,
+        "models": [],
         "best_models": [],
-        "variants": [],
     }
 
 
 def load_snapshot(path):
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    if data.get("schema_version") != 1 or not isinstance(data.get("best_models"), list) or not data["best_models"]:
+    if data.get("schema_version") != 2 or not isinstance(data.get("best_models"), list) or not data["best_models"]:
         raise ValueError(f"Invalid or empty Artificial Analysis snapshot: {path}")
     if not data.get("fetched_at"):
         raise ValueError(f"Artificial Analysis snapshot has no fetch date: {path}")
@@ -202,7 +182,7 @@ def write_json(path, data):
     temporary.replace(path)
 
 
-def fetch_snapshot(output, cache=DEFAULT_CACHE, offline=False, timeout=60, url=AA_URL):
+def fetch_snapshot(output, cache=DEFAULT_CACHE, offline=False, timeout=60, url=API_URL):
     """Write a snapshot; on network failure use the cache without hiding its age."""
     output = Path(output)
     cache = Path(cache)
@@ -213,12 +193,7 @@ def fetch_snapshot(output, cache=DEFAULT_CACHE, offline=False, timeout=60, url=A
             write_json(output, data)
         return data, True
     try:
-        request = urllib.request.Request(url, headers={"User-Agent": "ai-monitor/2.0"})
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read(20_000_001)
-        if len(body) > 20_000_000:
-            raise ValueError("Artificial Analysis response exceeds 20 MB")
-        data = parse_aa(body.decode("utf-8"))
+        data = parse_api(*fetch_models(load_api_key(), timeout=timeout, url=url))
         write_json(output, data)
         if cache != output:
             write_json(cache, data)
@@ -292,7 +267,7 @@ def _load_mapping(path=DEFAULT_MAPPING):
 def _comparison_groups(measured):
     groups = []
     for item in measured:
-        if not groups or groups[-1][0]["index_score"] - item["index_score"] >= 1:
+        if not groups or groups[-1][0]["intelligence_index"] - item["intelligence_index"] >= 1:
             groups.append([item])
         else:
             groups[-1].append(item)
@@ -301,7 +276,7 @@ def _comparison_groups(measured):
 
 def render_rating(snapshot, reports_dir=DEFAULT_REPORTS, session_models=DEFAULT_SESSION_MODELS, mapping=DEFAULT_MAPPING):
     aliases, labels = _load_mapping(mapping)
-    models = {item["model_key"]: item for item in snapshot["best_models"]}
+    models = {normalize_model(item["slug"]): item for item in snapshot["best_models"] if item.get("slug")}
     candidates = {}
     for raw in collect_candidates(reports_dir, session_models):
         key = normalize_model(raw)
@@ -321,21 +296,16 @@ def render_rating(snapshot, reports_dir=DEFAULT_REPORTS, session_models=DEFAULT_
         })
     entries.sort(key=lambda item: (
         item["result"] is None,
-        -(item["result"]["index_score"] if item["result"] else 0),
+        -(item["result"]["intelligence_index"] if item["result"] else 0),
         item["name"].casefold(),
     ))
     index = snapshot.get("index", {})
-    component_names = {}
-    for model in snapshot["best_models"]:
-        for component in model["components"]:
-            component_names[component["key"]] = component["name"]
-    benchmark_keys = ["frontiercode", "terminal_bench", "swe_atlas_qna"]
     if snapshot.get("available", True):
         description = (
             f"Данные Artificial Analysis от {snapshot['fetched_at']}. "
-            f"Рейтинг основан на Coding Agent Index v{index.get('version', 'unknown')}: "
-            "равный вес компонентов измеряет изменения кода, работу в терминале и понимание репозитория. "
-            "Это не отдельный PHP/Vue-бенчмарк; цена, скорость и локальная популярность в оценку не входят."
+            f"Рейтинг основан на Intelligence Index v{index.get('version', 'unknown')}: "
+            "сводная оценка 0–100 по бенчмаркам Artificial Analysis. "
+            "Это не отдельный PHP/Vue-бенчмарк; цена и локальная популярность в оценку не входят."
         )
     else:
         description = snapshot.get("error", "Снимок Artificial Analysis недоступен") + "; все оценки — н/д."
@@ -344,15 +314,13 @@ def render_rating(snapshot, reports_dir=DEFAULT_REPORTS, session_models=DEFAULT_
         "",
         description,
         "",
-        "Для каждой модели выбран лучший публичный вариант с полным индексом. "
-        "Результат относится к указанным agent harness и режиму reasoning; оценки других версий не переносятся.",
+        "Оценка относится к конкретной версии модели в каталоге Artificial Analysis; "
+        "результаты родственной модели или другой версии не переносятся.",
         "",
     ]
-    headers = ["Место", "Модель", "AA Index"] + [component_names.get(key, key) for key in benchmark_keys]
-    headers += ["Измеренный вариант", "Уверенность"]
     lines += [
-        "| " + " | ".join(headers) + " |",
-        "| ---: | --- | ---: | ---: | ---: | ---: | --- | --- |",
+        "| Место | Модель | Intelligence Index |",
+        "| ---: | --- | ---: |",
     ]
     position = 0
     previous_score = None
@@ -360,33 +328,22 @@ def render_rating(snapshot, reports_dir=DEFAULT_REPORTS, session_models=DEFAULT_
         result = entry["result"]
         if result is None:
             place = "—"
-            scores = ["н/д"] * 4
-            variant = "н/д"
-            confidence = "Нет данных AA"
+            score = "н/д"
         else:
-            score = result["index_score"]
-            if previous_score is None or score < previous_score - 0.05:
+            value = result["intelligence_index"]
+            if previous_score is None or value < previous_score - 0.05:
                 position = order
-            previous_score = score
+            previous_score = value
             place = str(position)
-            components = {component["key"]: component["score"] for component in result["components"]}
-            scores = [f"{score:.1f}"] + [
-                f"{components[key]:.1f}" if key in components else "н/д" for key in benchmark_keys
-            ]
-            variant = f"{result['agent']}; {result['variant']}"
-            confidence = (
-                "Точная версия; в настройке указан fallback"
-                if "default fallback" in result["variant"].casefold()
-                else "Прямое измерение точной версии"
-            )
-        lines.append("| " + " | ".join([place, entry["name"]] + scores + [variant, confidence]) + " |")
+            score = f"{value:.1f}"
+        lines.append(f"| {place} | {entry['name']} | {score} |")
     measured = [entry["result"] for entry in entries if entry["result"]]
     if measured:
         lines += [
             "",
             _comparison_groups(measured),
             "",
-            "Обозначения: `>` — разница не менее 1 пункта AA Index; `≈` — разница меньше 1 пункта. "
+            "Обозначения: `>` — разница не менее 1 пункта Intelligence Index; `≈` — разница меньше 1 пункта. "
             "Это правило представления сырых результатов, а не проверка статистической значимости. "
             "Модели с «н/д» в сравнение не входят.",
         ]
