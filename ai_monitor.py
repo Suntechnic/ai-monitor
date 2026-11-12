@@ -11,6 +11,8 @@ import sys
 import tempfile
 import urllib.request
 
+import fetch_aa
+
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MODEL = 'opencode/glm-5.3-flash-free'
 
@@ -153,6 +155,24 @@ def fetch(url, target, token=None):
     target.write_bytes(data)
 
 
+def copy_cached_provider(key, provider, run):
+    summary = f'{key}-summary.json' if provider.get('summary') else None
+    directories = sorted(
+        (path for path in (ROOT / 'runs').iterdir() if path.is_dir() and path != run),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for directory in directories:
+        for name in ([summary] if summary else []) + [f'{key}.{provider["format"]}']:
+            source = directory / name
+            if not source.is_file():
+                continue
+            target = run / name
+            shutil.copyfile(source, target)
+            return target, source
+    raise FileNotFoundError(f'No cached snapshot for {key}')
+
+
 def main():
     parser = argparse.ArgumentParser(description='AI pricing and recommendations via OpenCode')
     parser.add_argument('--model', default=DEFAULT_MODEL)
@@ -163,6 +183,8 @@ def main():
     parser.add_argument('--profiles', type=Path, default=ROOT / 'profiles.yml')
     parser.add_argument('--dry-run', action='store_true',
                         help='Prepare snapshots, manifest and prompt, then exit before OpenCode')
+    parser.add_argument('--skip-fetch', action='store_true',
+                        help='Reuse the latest local snapshots instead of downloading sources')
     args = parser.parse_args()
     if args.days < 1 or args.timeout < 1:
         parser.error('--days and --timeout must be positive')
@@ -198,26 +220,32 @@ def main():
             item = {field: provider[field] for field in ('name', 'url', 'format', 'access', 'pricing_notes')}
             item.update(provider=key, file=name, requires_auth=bool(provider.get('token')))
             try:
-                fetch(url, run / name, provider.get('token'))
-                if provider['format'] == 'json':
-                    raw = json.loads((run / name).read_text(encoding='utf-8'))
-                    (run / name).write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding='utf-8')
-                item['status'] = 'ok'
-                summary_type = provider.get('summary')
-                if summary_type:
-                    if summary_type == 'openrouter':
-                        models = [{k: m.get(k) for k in (
-                            'id', 'name', 'context_length', 'pricing',
-                            'supported_parameters', 'top_provider')} for m in raw.get('data', [])]
-                    elif summary_type == 'tokenator':
-                        models = summarize_tokenator((run / name).read_text(encoding='utf-8'))
-                    elif summary_type == 'vantyr':
-                        models = summarize_vantyr(raw)
-                    summary = f'{key}-summary.json'
-                    (run / summary).write_text(
-                        json.dumps(models, ensure_ascii=False, indent=2), encoding='utf-8')
-                    item['file'] = summary
-                    item['format'] = 'json'
+                if args.skip_fetch:
+                    target, source = copy_cached_provider(key, provider, run)
+                    item.update(file=target.name, status='ok', cached_from=str(source.relative_to(ROOT)))
+                    if provider.get('summary') and target.name.endswith('-summary.json'):
+                        item['format'] = 'json'
+                else:
+                    fetch(url, run / name, provider.get('token'))
+                    if provider['format'] == 'json':
+                        raw = json.loads((run / name).read_text(encoding='utf-8'))
+                        (run / name).write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding='utf-8')
+                    item['status'] = 'ok'
+                    summary_type = provider.get('summary')
+                    if summary_type:
+                        if summary_type == 'openrouter':
+                            models = [{k: m.get(k) for k in (
+                                'id', 'name', 'context_length', 'pricing',
+                                'supported_parameters', 'top_provider')} for m in raw.get('data', [])]
+                        elif summary_type == 'tokenator':
+                            models = summarize_tokenator((run / name).read_text(encoding='utf-8'))
+                        elif summary_type == 'vantyr':
+                            models = summarize_vantyr(raw)
+                        summary = f'{key}-summary.json'
+                        (run / summary).write_text(
+                            json.dumps(models, ensure_ascii=False, indent=2), encoding='utf-8')
+                        item['file'] = summary
+                        item['format'] = 'json'
             except Exception as exc:
                 error = str(exc)
                 for configured in providers.values():
@@ -225,6 +253,19 @@ def main():
                         error = error.replace(configured['token'], '[REDACTED]')
                 item.update(status='error', error=error)
             manifest['sources'].append(item)
+        aa_item = {'name': 'Artificial Analysis', 'url': fetch_aa.AA_URL}
+        try:
+            aa_snapshot, aa_cached = fetch_aa.fetch_snapshot(
+                run / 'aa-coding.json', offline=args.skip_fetch)
+            aa_item.update(
+                file='aa-coding.json', status='ok', cached=aa_cached,
+                fetched_at=aa_snapshot['fetched_at'], index=aa_snapshot['index'],
+                models=len(aa_snapshot['best_models']),
+            )
+        except Exception as exc:
+            aa_item['status'] = 'error'
+            aa_item['error'] = str(exc)
+        manifest['artificial_analysis'] = aa_item
         (run / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
         previous = list((ROOT / 'reports').glob('*.md')) + [
             p for p in (ROOT / 'reports').glob('*/report.md') if p.parent.name != 'actual'
@@ -249,11 +290,16 @@ def main():
                                     timeout=args.timeout, check=False)
         if result.returncode:
             raise RuntimeError(f'OpenCode exited {result.returncode}; see {run}/opencode.log')
+        if aa_item['status'] == 'ok':
+            rating_snapshot = fetch_aa.load_snapshot(run / 'aa-coding.json')
+        else:
+            rating_snapshot = fetch_aa.empty_snapshot(aa_item['error'])
+        fetch_aa.refresh_rating(rating_snapshot, output, run / 'session-models.yml')
         rules = {
             'report.md': (500, ['# Мониторинг ИИ', '## Рекомендации', '## Новости', '## Изменения']),
             'prices.md': (200, ['# Цены', 'https://', '## Сравнение цен по моделям']),
-            'rating.md': (150, ['# Рейтинг моделей', 'Индекс']),
-            'sources.md': (200, ['# Источники', 'https://']),
+            'rating.md': (150, ['# Рейтинг моделей', 'Artificial Analysis', 'AA Index']),
+            'sources.md': (200, ['# Источники', 'https://', 'Artificial Analysis']),
         }
         for name, (minimum, markers) in rules.items():
             path = output / name
