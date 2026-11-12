@@ -1,7 +1,7 @@
 # ai-monitor
 
-Короткий мониторинг ИИ для PHP/JS/Vue/HTML/CSS: DeepSeek, OpenRouter, OpenCode Go, Токенатор, Vantyr.
-Планировщик не включён. Linux, Python 3.9+, OpenCode v2, PyYAML.
+Короткий мониторинг ИИ для PHP/JS/Vue/HTML/CSS и других задач.
+Linux, Python 3.9+, OpenCode v2, PyYAML.
 
 ## Запуск
 
