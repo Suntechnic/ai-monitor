@@ -38,6 +38,8 @@ def load_providers(path):
             raise ValueError(f'Unsupported format for {key}')
         if provider.get('summary') not in (None, 'openrouter', 'tokenator', 'vantyr'):
             raise ValueError(f'Unsupported summary for {key}')
+        if 'text_only' in provider and not isinstance(provider['text_only'], bool):
+            raise ValueError(f'Invalid text_only for {key}')
         if 'token' in provider and (not isinstance(provider['token'], str) or not provider['token'].strip()):
             raise ValueError(f'Invalid token for {key}')
     return providers
@@ -69,6 +71,18 @@ def load_profiles(path):
         if note is not None and (not isinstance(note, str) or not note.strip()):
             raise ValueError(f'Invalid note for {key}')
     return profiles
+
+
+def _is_token_price(value):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value > 0 or value == 0
+    if isinstance(value, str):
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
+    return False
 
 
 def summarize_tokenator(html_text):
@@ -237,6 +251,10 @@ def main():
                             models = [{k: m.get(k) for k in (
                                 'id', 'name', 'context_length', 'pricing',
                                 'supported_parameters', 'top_provider')} for m in raw.get('data', [])]
+                            if provider.get('text_only'):
+                                models = [m for m in models if m.get('pricing') and
+                                          _is_token_price(m['pricing'].get('prompt')) and
+                                          _is_token_price(m['pricing'].get('completion'))]
                         elif summary_type == 'tokenator':
                             models = summarize_tokenator((run / name).read_text(encoding='utf-8'))
                         elif summary_type == 'vantyr':

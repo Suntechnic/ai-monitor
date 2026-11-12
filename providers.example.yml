@@ -1,3 +1,11 @@
+bazaarlink:
+  name: BazaarLink
+  url: https://bazaarlink.ai/api/v1/models
+  format: json
+  summary: openrouter
+  text_only: true
+  access: Оплата по токенам (USD); есть бесплатные модели и скидки до -92% от official-цен разработчиков; OpenAI-совместимый шлюз.
+  pricing_notes: В API pricing цены за один токен; умножай на 1000000 для USD за миллион. Цены продавца, не official-цены разработчика модели; учитывай скидки и бесплатные модели.
 openrouter:
   name: OpenRouter
   url: https://openrouter.ai/api/v1/models

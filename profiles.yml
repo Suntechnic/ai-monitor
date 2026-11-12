@@ -1,49 +1,48 @@
-# Профили применения: задачи и оплачиваемые токены условной задачи.
-# Семантика профиля — типовая задача-сессия целиком (все шаги агента),
-# а не один вызов: input / output / cache_read — суммарные оплачиваемые
-# токены такой сессии. Это усреднение по реальным сессиям, а не измерение
-# конкретной задачи: реальные задачи отличаются от среднего в разы.
-# note — происхождение цифр; обновляйте по реальным сессиям OpenCode
-# (opencode api get /api/session — поля tokens.input/output/reasoning/cache).
 admin:
   title: Администрирование серверов
-  input: 815520
-  output: 28976
-  cache_read: 683951
-  note: 'n=14; медианы: input=90104, cache_read=65318, output=18980'
+  input: 730407
+  output: 29762
+  cache_read: 2164960
+  note: 'n=33; медианы: input=97634, cache_read=142080, output=14854'
 ai:
   title: ai
-  input: 1958428
-  output: 52671
-  cache_read: 1519655
-  note: 'n=6; медианы: input=2334330, cache_read=78826, output=13883'
+  input: 1410431
+  output: 41092
+  cache_read: 2370387
+  note: 'n=13; медианы: input=748236, cache_read=120984, output=14695'
 monitor:
   title: monitor
   input: 1064477
   output: 16662
   cache_read: 89270
   note: 'n=10; медианы: input=1016611, cache_read=2112, output=13400'
-php-imp:
-  title: Реализация подготовленного плана
-  input: 11222504
-  output: 189104
-  cache_read: 8675904
-  note: 'n=1; медианы: input=11222504, cache_read=8675904, output=189104'
-php-pln:
-  title: Планирование сложной многофайловой проектной работы
-  input: 743017
-  output: 11558
-  cache_read: 0
-  note: 'n=3; медианы: input=623091, cache_read=0, output=12124'
-php-rvw:
-  title: Проверка реализации
-  input: 683348
-  output: 6635
-  cache_read: 0
-  note: 'n=1; медианы: input=683348, cache_read=0, output=6635'
+scripting:
+  title: scripting
+  input: 1154284
+  output: 34670
+  cache_read: 3944616
+  note: 'n=5; медианы: input=704791, cache_read=2563080, output=49170'
 simple:
   title: Быстрые простые ответы
   input: 71122
   output: 1954
   cache_read: 38418
   note: 'n=8; медианы: input=19930, cache_read=0, output=732'
+tosir-imp:
+  title: Реализация этапа по плану
+  input: 232782
+  output: 32802
+  cache_read: 3927520
+  note: 'n=6; медианы: input=103061, cache_read=805984, output=12452'
+tosir-pln:
+  title: Планирование этапа задачи
+  input: 287634
+  output: 14733
+  cache_read: 1247787
+  note: 'n=6; медианы: input=260544, cache_read=76288, output=7384'
+tosir-rvw:
+  title: Ревью задачи
+  input: 722789
+  output: 9992
+  cache_read: 419354
+  note: 'n=5; медианы: input=71807, cache_read=142080, output=10688'
