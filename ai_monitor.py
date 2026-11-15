@@ -9,12 +9,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 
 import fetch_aa
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_MODEL = 'opencode/glm-5.3-flash-free'
+STATS_MAX_AGE = dt.timedelta(hours=2)
+STATS_TIMEOUT = 3600
 
 def load_providers(path):
     try:
@@ -187,6 +190,39 @@ def copy_cached_provider(key, provider, run):
     raise FileNotFoundError(f'No cached snapshot for {key}')
 
 
+def stats_are_stale(path, max_age=STATS_MAX_AGE):
+    """True, если снимка нет или он старше max_age."""
+    try:
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        return True
+    return age > max_age.total_seconds()
+
+
+def refresh_session_stats(profiles, max_age=STATS_MAX_AGE, timeout=STATS_TIMEOUT):
+    """Запускает session_stats.py collect, если models.yml устарел.
+
+    Ошибки сбора не прерывают монитор: используется последний снимок,
+    оставшийся на диске, а его отсутствие обрабатывается как раньше
+    (session_models: missing).
+    """
+    path = ROOT / 'runs' / 'session-stats' / 'models.yml'
+    if not stats_are_stale(path, max_age):
+        return False
+    print(f'Session stats are stale, collecting: {path}')
+    command = [sys.executable, str(ROOT / 'session_stats.py'),
+               '--profiles', str(profiles), 'collect']
+    try:
+        result = subprocess.run(command, cwd=ROOT, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f'warning: session stats collection failed: {exc}', file=sys.stderr)
+        return False
+    if result.returncode:
+        print(f'warning: session_stats.py collect exited {result.returncode}; '
+              'keeping the snapshot on disk', file=sys.stderr)
+    return not result.returncode
+
+
 def main():
     parser = argparse.ArgumentParser(description='AI pricing and recommendations via OpenCode')
     parser.add_argument('--model', default=DEFAULT_MODEL)
@@ -199,6 +235,8 @@ def main():
                         help='Prepare snapshots, manifest and prompt, then exit before OpenCode')
     parser.add_argument('--skip-fetch', action='store_true',
                         help='Reuse the latest local snapshots instead of downloading sources')
+    parser.add_argument('--skip-stats-refresh', action='store_true',
+                        help='Do not run session_stats.py collect even if stats are stale')
     args = parser.parse_args()
     if args.days < 1 or args.timeout < 1:
         parser.error('--days and --timeout must be positive')
@@ -217,6 +255,8 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError('Another run is already active')
+        if not args.skip_fetch and not args.skip_stats_refresh:
+            refresh_session_stats(args.profiles)
         now = dt.datetime.now().astimezone()
         run = Path(tempfile.mkdtemp(prefix=now.strftime('%Y-%m-%d_%H-%M-%S-'), dir=ROOT / 'runs'))
         manifest = {'time': now.isoformat(), 'model': args.model, 'sources': []}

@@ -1,91 +1,117 @@
 # Цены
-Дата проверки: 12.11.2026. Цены в USD за 1 млн токенов, если не указано иное; локальные summary и pricing_notes manifest — основа тарифных данных.
+Дата проверки: 15.11.2026. Ставки в USD за 1 млн токенов; локальные summary и pricing_notes manifest — основа тарифов.
 
 ## Выбранные пары
 
 | Модель | Поставщик | Точный ID | Обычный вход / cache read / выход, USD/1M | Контекст | Тарифные условия | Официальный URL |
 | --- | --- | --- | --- | --- | --- | --- |
-| GPT-6.1 Sol | Vantyr | `gpt-6-1-sol` | 0.15 / 0.01 / 0.50 | н/д | Тариф Vantyr из summary; unstable API отмечен manifest | https://vantyr.xyz/api/pricing |
-| Claude Fable 5.2 | Vantyr | `claude-fable-5-2` | 1.25 / 0.10 / 6.00 | н/д | Тариф Vantyr; нестабильная доступность | https://vantyr.xyz/api/pricing |
-| DeepSeek V4.1 Flash 1017 | DeepSeek напрямую | `deepseek-flash` | peak 0.006 / 0.003 / 0.028; off-peak 0.003 / 0.0015 / 0.014 | 1,000,000 | Peak пн–пт 01–04 и 06–10 UTC, кроме китайских праздников; tool calls, vision, max output 384K | https://api-docs.deepseek.com/quick_start/pricing/ |
-| Claude Haiku 5.5 | OpenRouter | `anthropic/claude-haiku-5.5` | 0.10 / 0.01 / 0.50 | 1,000,000 | prompt профиля ниже 100K; агрегированная цена не гарантирует каждый backend | https://openrouter.ai/api/v1/models |
+| Claude Fable 5.2 | Vantyr | `claude-fable-5-2` | 1.25 / 0.10 / 6.00 | 1,000,000 | Фиксированные ставки input/output из summary продавца; нестабильная доступность отмечена manifest | https://vantyr.xyz/api/pricing |
+| DeepSeek V4.1 Flash 1017 | DeepSeek напрямую | `deepseek-flash` | peak 0.006 / 0.003 / 0.028; off-peak 0.003 / 0.0015 / 0.014 | 1,000,000 | Peak пн–пт 01–04 и 06–10 UTC, кроме китайских праздников; tool calls, max output 384K | https://api-docs.deepseek.com/quick_start/pricing/ |
+| Claude Haiku 5.5 | OpenRouter | `anthropic/claude-haiku-5.5` | 0.10 / 0.01 / 0.50 | 1,000,000 | Цена входа действует для prompt <100K; при более длинном prompt тариф выше; агрегированный backend | https://openrouter.ai/api/v1/models |
 
 ## Существенные альтернативы
 
 | Модель | Поставщик | Точный ID | Обычный вход / cache read / выход, USD/1M | Контекст | Условия и причина невыбора | Официальный URL |
 | --- | --- | --- | --- | --- | --- | --- |
-| GPT-6.1 Sol | OpenRouter | `openai/gpt-6.1-sol` | 2.00 / 0.10 / 10.00; при prompt ≥272K: 4.00 / 0.20 / 15.00 | 1,050,000 | Агрегированный маршрут; высокий tier применим к профилям с input выше 272K | https://openrouter.ai/api/v1/models |
-| Claude Fable 5.2 | OpenRouter | `anthropic/claude-fable-5.2` | 8.00 / 0.20 / 40.00 | 1,000,000 | Дороже Vantyr; batch-цена не использована, потому что обычная интерактивная сессия | https://openrouter.ai/api/v1/models |
-| DeepSeek V4.1 Flash 1017 | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` | off-peak 0.15 / 0.003 / 0.60; peak 0.30 / 0.006 / 1.20 | 1,048,576 | Временные override из снимка; дороже прямого API, агрегированная цена не гарантирует backend | https://openrouter.ai/api/v1/models |
-| DeepSeek V4.1 Flash 1017 | BazaarLink | `deepseek-v4.1-flash-1017` | 0.21225 / 0.021 / 0.84825 | 1,048,576 | Тариф продавца, не official; кэшированное чтение существенно дороже прямого тарифа | https://bazaarlink.ai/api/v1/models |
-| Claude Haiku 5.5 | Токенатор | `claude-haiku-5.5` | 0.297 / н/д / 0.297 | 1,000,000 | Кеш не подтверждён, стоимость без кеша; общий множитель input/output по pricing_notes | https://tokenator.cloud/models |
-| Claude Haiku 5.5 | OpenCode Go | `claude-haiku-5-5` | включено в подписку | н/д | Go $10/мес, Go Plus $40/мес; для каждой модели лимит 5h=20%, week=50%, month=100% от model limit. Haiku limit $60/month; тариф пользователя не подтверждён | https://opencode.ai/v2/docs/console/go |
+| Claude Fable 5.2 | OpenRouter | `anthropic/claude-fable-5.2` | 8.00 / 0.20 / 40.00 | 1,000,000 | Агрегированный маршрут; обычный тариф, не batch; дороже Vantyr | https://openrouter.ai/api/v1/models |
+| Claude Fable 5.2 | BazaarLink | `claude-fable-5.2` | 8.00 / 0.20 / 40.00 | 1,000,000 | Тариф продавца; дороже Vantyr | https://bazaarlink.ai/api/v1/models |
+| Claude Fable 5.2 | Токенатор | `claude-fable-5.2` | 3.24–6.48 / н/д / 3.24–6.48 | 1,000,000 | Общая ставка input/output по multiplier; cache read не подтверждён, стоимость без кеша | https://tokenator.cloud/models |
+| DeepSeek V4.1 Flash 1017 | OpenRouter | `deepseek/deepseek-v4.1-flash-1017` | 0.020 / 0.007 / 0.108 | 1,048,576 | Ставки агрегированного маршрута; дешевле прямого API в этом snapshot, но backend не гарантирован | https://openrouter.ai/api/v1/models |
+| DeepSeek V4.1 Flash 1017 | BazaarLink | `deepseek-v4.1-flash-1017` | 0.21225 / 0.021 / 0.84825 | 1,048,576 | Цена продавца, а не DeepSeek; значительно дороже прямого API | https://bazaarlink.ai/api/v1/models |
+| Claude Haiku 5.5 | Токенатор | `claude-haiku-5.5` | 0.297 / н/д / 0.297 | 1,000,000 | Общая ставка input/output; cache неизвестен, цена задачи посчитана без cache_read | https://tokenator.cloud/models |
+| Claude Haiku 5.5 | OpenCode Go | `claude-haiku-5-5` | включено в подписку | н/д | Go $10/мес, Go Plus $40/мес; модельный лимит $60/мес, 5h=20%, week=50%; доступность на тарифе пользователя не подтверждена | https://opencode.ai/v2/docs/console/go |
 
 ## Расчёты
 
-Формула: `(input × ставка_input + cache_read × ставка_cache + output × ставка_output) / 1,000,000`. Диапазон DeepSeek: off-peak / peak. Все входы взяты из профиля, без переноса токенов из прежнего отчёта.
+Формула: `(input × ставка_input + cache_read × ставка_cache + output × ставка_output) / 1,000,000`. Для Fable через Vantyr применены ставки summary 1.25/0.10/6.00; DeepSeek дан как off-peak / peak. Для сравнения Vantyr с другими поставщиками Fable Tokenator посчитан без cache read. Задача — усреднённая типовая сессия: реальные задачи отличаются от среднего в разы, а этапы одной большой задачи считаются вместе.
 
 | Профиль | Роль | Модель / поставщик | Подстановка | USD/задача |
 | --- | --- | --- | --- | ---: |
-| Администрирование серверов | Основной | GPT-6.1 Sol / Vantyr | `(730407×.15 + 2164960×.01 + 29762×.5)/1M` | 0.1461 |
+| Администрирование серверов | Основной | Claude Fable 5.2 / Vantyr | `(730407×1.25 + 2164960×.10 + 29762×6)/1M` | 1.308 |
 | Администрирование серверов | Бюджетный | DeepSeek / DeepSeek напрямую | `(730407×in + 2164960×cache + 29762×out)/1M` | 0.0059 / 0.0117 |
-| AI-разработка | Основной | GPT-6.1 Sol / Vantyr | `(1410431×.15 + 2370387×.01 + 41092×.5)/1M` | 0.2558 |
+| AI-разработка | Основной | Claude Fable 5.2 / Vantyr | `(1410431×1.25 + 2370387×.10 + 41092×6)/1M` | 2.247 |
 | AI-разработка | Бюджетный | DeepSeek / DeepSeek напрямую | `(1410431×in + 2370387×cache + 41092×out)/1M` | 0.0084 / 0.0167 |
-| Мониторинг | Основной | GPT-6.1 Sol / Vantyr | `(1064477×.15 + 89270×.01 + 16662×.5)/1M` | 0.1689 |
-| Мониторинг | Бюджетный | DeepSeek / DeepSeek напрямую | `(1064477×in + 89270×cache + 16662×out)/1M` | 0.0038 / 0.0076 |
-| Скрипты и автоматизация | Основной | Claude Fable 5.2 / Vantyr | `(1154284×1.25 + 3944616×.1 + 34670×6)/1M` | 0.7768 |
+| Мониторинг | Основной | Claude Fable 5.2 / Vantyr | `(1064477×1.25 + 89270×.10 + 16662×6)/1M` | 1.439 |
+| Мониторинг | Бюджетный | DeepSeek / DeepSeek напрямую | `(1064477×in + 89270×cache + 16662×out)/1M` | 0.0036 / 0.0071 |
+| Скрипты и автоматизация | Основной | Claude Fable 5.2 / Vantyr | `(1154284×1.25 + 3944616×.10 + 34670×6)/1M` | 2.045 |
 | Скрипты и автоматизация | Бюджетный | DeepSeek / DeepSeek напрямую | `(1154284×in + 3944616×cache + 34670×out)/1M` | 0.0099 / 0.0197 |
-| Быстрые простые ответы | Основной | Claude Haiku 5.5 / OpenRouter | `(71122×.1 + 38418×.01 + 1954×.5)/1M` | 0.0085 |
+| Быстрые простые ответы | Основной | Claude Haiku 5.5 / OpenRouter | `(71122×.10 + 38418×.01 + 1954×.50)/1M` | 0.0085 |
 | Быстрые простые ответы | Бюджетный | DeepSeek / DeepSeek напрямую | `(71122×in + 38418×cache + 1954×out)/1M` | 0.0003 / 0.0006 |
-| Реализация этапа по плану | Основной | Claude Fable 5.2 / Vantyr | `(232782×1.25 + 3927520×.1 + 32802×6)/1M` | 0.8805 |
-| Реализация этапа по плану | Бюджетный | DeepSeek / DeepSeek напрямую | `(232782×in + 3927520×cache + 32802×out)/1M` | 0.0526 / 0.1052 |
-| Планирование этапа задачи | Основной | Claude Fable 5.2 / Vantyr | `(287634×1.25 + 1247787×.1 + 14733×6)/1M` | 0.5727 |
-| Планирование этапа задачи | Бюджетный | DeepSeek / DeepSeek напрямую | `(287634×in + 1247787×cache + 14733×out)/1M` | 0.0031 / 0.0062 |
-| Ревью задачи | Основной | Claude Fable 5.2 / Vantyr | `(722789×1.25 + 419354×.1 + 9992×6)/1M` | 1.0054 |
-| Ревью задачи | Бюджетный | DeepSeek / DeepSeek напрямую | `(722789×in + 419354×cache + 9992×out)/1M` | 0.0035 / 0.0070 |
+| Реализация этапа по плану | Основной | Claude Fable 5.2 / Vantyr | `(232782×1.25 + 3927520×.10 + 32802×6)/1M` | 0.881 |
+| Реализация этапа по плану | Бюджетный | DeepSeek / DeepSeek напрямую | `(232782×in + 3927520×cache + 32802×out)/1M` | 0.0070 / 0.0141 |
+| Планирование этапа задачи | Основной | Claude Fable 5.2 / Vantyr | `(287634×1.25 + 1247787×.10 + 14733×6)/1M` | 0.573 |
+| Планирование этапа задачи | Бюджетный | DeepSeek / DeepSeek напрямую | `(287634×in + 1247787×cache + 14733×out)/1M` | 0.0029 / 0.0059 |
+| Ревью задачи | Основной | Claude Fable 5.2 / Vantyr | `(722789×1.25 + 419354×.10 + 9992×6)/1M` | 1.005 |
+| Ревью задачи | Бюджетный | DeepSeek / DeepSeek напрямую | `(722789×in + 419354×cache + 9992×out)/1M` | 0.0029 / 0.0059 |
 
 ## Сравнение цен по моделям
 
-Сценарий сравнения для каждой модели — администрирование серверов (`730407` input, `2164960` cache read, `29762` output); это одинаковая база для всех продавцов данной модели. Условная сессия целиком: реальные задачи отличаются от среднего в разы, а этапы одной большой задачи считаются вместе.
-
-### GPT-6.1 Sol
-
-| Поставщик | Точный API ID | Вход / cache read / выход, USD/1M | $/задача | Особенности |
-| --- | --- | --- | ---: | --- |
-| Vantyr | `gpt-6-1-sol` | 0.15 / 0.01 / 0.50 | 0.146 | Самый дешёвый из этих маршрутов; manifest отмечает нестабильность API |
-| OpenRouter | `openai/gpt-6.1-sol` | 2.00 / 0.10 / 10.00 | 2.295 | Агрегированный backend; tier меняется при input ≥272K, данный профиль ниже порога |
-
-Использование: `vantyr/gpt-6-1-sol` — 14 сессий, week 14, month 14. Vantyr заметно дешевле, но устойчивость ниже не подтверждена.
+Для всех таблиц сравнения выбран профиль «Администрирование серверов»: 730407 input, 2164960 cache read, 29762 output. Условия и ID продавцов указаны отдельно; агрегированный OpenRouter не гарантирует указанные цены каждому backend.
 
 ### Claude Fable 5.2
 
 | Поставщик | Точный API ID | Вход / cache read / выход, USD/1M | $/задача | Особенности |
 | --- | --- | --- | ---: | --- |
-| Vantyr | `claude-fable-5-2` | 1.25 / 0.10 / 6.00 | 1.223 | Нестабильность API; цены summary продавца |
-| OpenRouter | `anthropic/claude-fable-5.2` | 8.00 / 0.20 / 40.00 | 7.393 | Агрегированный маршрут; cache write не входит в сценарий |
+| Vantyr | `claude-fable-5-2` | 1.25 / 0.10 / 6.00 | 1.308 | Нестабильность API; ставки summary продавца |
+| Токенатор | `claude-fable-5.2` | 3.24–6.48 / н/д / 3.24–6.48 | 2.463–4.926 без кеша | Cache read не известен; общая ставка input/output |
+| OpenRouter | `anthropic/claude-fable-5.2` | 8.00 / 0.20 / 40.00 | 7.467 | Агрегированный API; обычный тариф |
+| BazaarLink | `claude-fable-5.2` | 8.00 / 0.20 / 40.00 | 7.467 | Тариф продавца, не official тариф разработчика |
 
-Для одинакового профиля Vantyr существенно дешевле. AA 64.6 относится к версии Fable 5.2 в снимке, а не к продавцу или отдельному кодинг-тесту.
+По snapshot Vantyr дешевле, но риск доступности требует резервного канала. У Токенатора цена не включает cache read, а у OpenRouter и BazaarLink тарифы заметно выше при том же типовом сценарии.
+
+Использование: `vantyr/claude-opus-5-5` — 7 сессий, week 7, month 7; это другая модель, не переносить использование на Fable 5.2.
 
 ### DeepSeek V4.1 Flash 1017
 
 | Поставщик | Точный API ID | Вход / cache read / выход, USD/1M | $/задача | Особенности |
 | --- | --- | --- | ---: | --- |
-| DeepSeek напрямую | `deepseek-flash` | off-peak 0.003 / 0.0015 / 0.014; peak 0.006 / 0.003 / 0.028 | 0.0059 / 0.0117 | Официальные временные ставки, tool calls, контекст 1M |
-| OpenRouter | `deepseek/deepseek-v4.1-flash-1017` | off-peak 0.15 / 0.003 / 0.60; peak 0.30 / 0.006 / 1.20 | 1.319 / 2.638 | Временные override из снимка; агрегированная цена и backend могут различаться |
-| BazaarLink | `deepseek-v4.1-flash-1017` | 0.21225 / 0.021 / 0.84825 | 0.210 | Тариф продавца, не официальный тариф DeepSeek |
+| OpenRouter | `deepseek/deepseek-v4.1-flash-1017` | 0.020 / 0.007 / 0.108 | 0.033 | Агрегированный маршрут; цена из snapshot |
+| DeepSeek напрямую | `deepseek-flash` | off-peak 0.003 / 0.0015 / 0.014; peak 0.006 / 0.003 / 0.028 | 0.0059 / 0.0117 | Официальные временные ставки; tool calls, контекст 1M |
+| BazaarLink | `deepseek-v4.1-flash-1017` | 0.21225 / 0.021 / 0.84825 | 0.226 | Кеш есть, но тариф продавца существенно выше прямого API |
 
-Использование: `deepseek/deepseek-flash` — 8 сессий, week 8, month 8. Прямой маршрут дешевле; агрегированные значения показывают цену маршрута, а не гарантированную стоимость каждого backend.
+Прямой API самый дешёвый для этого типового сценария; OpenRouter дороже примерно в 2.8 раза, а BazaarLink — примерно в 19 раз. Для отдельного точного Snapshot 1017 прямой API обслуживает это имя через текущий `deepseek-flash`.
+
+Использование: `deepseek/deepseek-flash` — 10 сессий, week 8, month 10; `opencode-go/deepseek-v4.1-flash` — 5 сессий, week 5, month 5.
 
 ### Claude Haiku 5.5
 
 | Поставщик | Точный API ID | Вход / cache read / выход, USD/1M | $/задача | Особенности |
 | --- | --- | --- | ---: | --- |
-| OpenRouter | `anthropic/claude-haiku-5.5` | 0.10 / 0.01 / 0.50 | 0.0085 | Prompt ниже 100K tier; cache read есть |
-| Токенатор | `claude-haiku-5.5` | 0.297 / н/д / 0.297 | 0.0221 | Кеш неизвестен, расчёт без cache_read |
-| OpenCode Go | `claude-haiku-5-5` | включено в подписку | н/д | Go $10/mo; model monthly limit $60, 5h 20%, weekly 50%; доступность на тарифе не подтверждена |
+| OpenRouter | `anthropic/claude-haiku-5.5` | 0.10 / 0.01 / 0.50 | 0.0085 | Prompt меньше 100K; выше действует тарифный override |
+| Токенатор | `claude-haiku-5.5` | 0.297 / н/д / 0.297 | 0.226 без кеша | Cache read не подтверждён |
+| OpenCode Go | `claude-haiku-5-5` | включено в подписку | н/д | Лимиты 5h/week/month; тариф пользователя неизвестен |
 
-Для измеряемой token-cost сессии OpenRouter дешевле; Go включает usage в платную подписку с квотами, поэтому его нельзя считать бесплатным или приравнять к цене вызова.
+OpenRouter дешевле среди маршрутов с вычислимой оплатой за токены и подтверждённым cache read. Go — включённая услуга подписки с квотами, а не бесплатный вызов.
 
-Использование: `opencode-go/claude-haiku-5-5` — 2 сессии, week 2, month 2; `opencode-go/deepseek-v4.1-flash` — 5 сессий, week 5, month 5; `openrouter/openai/gpt-6-luna` — 1 сессия, week 1, month 1; `opencode-go/kimi-k3.1-pro` — 6 сессий, week 5, month 6.
+Использование: `opencode-go/claude-haiku-5-5` — 2 сессии, week 0, month 2; `timeweb/anthropic/claude-haiku-5-5` — 45 сессий, week 24, month 43.
 
-Недостаточно данных для сравнения: `freellmapi/auto` — неоднозначный ID; `ollama/qwen3:14b` — локальная модель; `tokenator/free-claude-opus-5.5`, `tokenator/free-gemini-4-argon`, `tokenator/free-gemini-4-carbon`, `tokenator/free-glm-5.3-flash`, `tokenator/free-gpt-6-astra`, `opencode/beam-free`, `opencode-go/beam-free`, `opencode-go/deepseek-v4.1-flash-free`, `opencode-go/glm-5.3-flash-free`, `opencode-go/longcat-2.5-preview-free` — бесплатные маршруты исключены; `timeweb/anthropic/claude-opus-5-5`, `timeweb/anthropic/claude-sonnet-5-5`, `timeweb/anthropic/claude-haiku-5-5` — тарифы этих продавцов отсутствуют в доступных ценовых снимках; `tokenator/hy4` — подтверждён только один сопоставимый тариф.
+### GPT-6.1 Sol
+
+| Поставщик | Точный API ID | Вход / cache read / выход, USD/1M | $/задача | Особенности |
+| --- | --- | --- | ---: | --- |
+| Vantyr | `gpt-6-1-sol` | 0.15 / 0.010 / 0.50 | 0.146 | Нестабильный API; тариф summary |
+| OpenRouter | `openai/gpt-6.1-sol` | 2.00 / 0.10 / 10.00 | 1.975 | Агрегированный маршрут; профиль ниже порога 272K input |
+
+Vantyr дешевле, но ниже по надёжности; OpenRouter — более дорогой резервный маршрут. Модель не выбрана основной в текущих профилях, поскольку Fable 5.2 имеет более высокий AA Index.
+
+Использование: `vantyr/gpt-6-1-sol` — 15 сессий, week 15, month 15; `timeweb/openai/gpt-6.1-sol` — 1 сессия, week 1, month 1.
+
+### Kimi K3.1 Pro
+
+| Поставщик | Точный API ID | Вход / cache read / выход, USD/1M | $/задача | Особенности |
+| --- | --- | --- | ---: | --- |
+| OpenRouter | `moonshotai/kimi-k3.1-pro` | 0.2403 / 0.20 / 8.4023 | 0.859 | Агрегированный API, cache read подтверждён |
+| Vantyr | `kimi-k3.1-pro` | 0.25 / 0.03 / 0.85 | 0.273 | Нестабильность Vantyr; тариф summary |
+| OpenCode Go | `kimi-k3.1-pro` | включено в подписку | н/д | Go: модельный лимит $15/мес; 5h 20%, week 50%; тариф пользователя не подтверждён |
+
+Vantyr дешевле для заданного сценария, но с риском доступности. У OpenCode Go оплата считается в рамках платной подписки и ограничена модельной квотой.
+
+Использование: `opencode-go/kimi-k3.1-pro` — 6 сессий, week 5, month 6.
+
+## Недостаточно данных для сравнения
+
+- `freellmapi/auto` — неоднозначный ID.
+- `ollama/qwen3:14b` — локальная модель.
+- `tokenator/free-claude-opus-5.5`, `tokenator/free-gemini-4-argon`, `tokenator/free-gemini-4-carbon`, `tokenator/free-glm-5.3-flash`, `tokenator/free-gpt-6-astra`, `opencode/beam-free`, `opencode-go/beam-free`, `opencode-go/deepseek-v4.1-flash-free`, `opencode-go/glm-5.3-flash-free`, `opencode-go/longcat-2.5-preview-free` — бесплатные маршруты исключены.
+- `timeweb/anthropic/claude-opus-5-5`, `timeweb/anthropic/claude-sonnet-5-5`, `timeweb/anthropic/claude-haiku-5-5` — цены Timeweb отсутствуют в доступных ценовых снимках.
+- `tokenator/hy4` — подтверждён только один сопоставимый тариф; `openrouter/openai/gpt-6-luna` — в доступных снимках нет второго сопоставимого платного маршрута.

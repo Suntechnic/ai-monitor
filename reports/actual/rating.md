@@ -1,6 +1,6 @@
 # Рейтинг моделей
 
-Данные Artificial Analysis от 2026-11-12T21:35:05.597735+03:00. Рейтинг основан на Intelligence Index v5: сводная оценка 0–100 по бенчмаркам Artificial Analysis. Это не отдельный PHP/Vue-бенчмарк; цена и локальная популярность в оценку не входят.
+Данные Artificial Analysis от 2026-11-15T14:16:37.831183+03:00. Рейтинг основан на Intelligence Index v5: сводная оценка 0–100 по бенчмаркам Artificial Analysis. Это не отдельный PHP/Vue-бенчмарк; цена и локальная популярность в оценку не входят.
 
 Оценка относится к конкретной версии модели в каталоге Artificial Analysis; результаты родственной модели или другой версии не переносятся.
 
@@ -24,7 +24,9 @@
 | 16 | gpt-oss-120b (High) | 3.8 |
 | — | claude-sonet-5 | н/д |
 | — | dashscope/qwen3.5-flash | н/д |
+| — | deepseek-v4-flash-0731 | н/д |
 | — | deepseek-v4.1-flash | н/д |
+| — | deepseek/deepseek-v4-flash-0731free:free | н/д |
 | — | gemma-4-31b-it | н/д |
 | — | Hy4 | н/д |
 
