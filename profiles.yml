@@ -1,48 +1,90 @@
+# Профили применения: задачи и оплачиваемые токены условной задачи.
+# input / output / cache_read — суммарные токены типовой сессии целиком.
+# note — происхождение цифр и ограничения сценария.
+#
+# policy задаёт right-sizing модели:
+#   main_min_index   — минимальный Intelligence Index для основного варианта;
+#   budget_min_index — минимальный Intelligence Index для бюджетного варианта;
+#   max_premium      — допустимое превышение цены над самой дешёвой моделью,
+#                      прошедшей main_min_index (только для надёжности/доступности).
+# Пороги заданы для текущей версии AA; при смене версии индекса их нужно пересмотреть.
 admin:
   title: Администрирование серверов
   input: 730407
   output: 29762
   cache_read: 2164960
   note: 'n=33; медианы: input=97634, cache_read=142080, output=14854'
+  policy:
+    main_min_index: 45
+    budget_min_index: 30
+    max_premium: 3.0
 ai:
-  title: ai
+  title: AI-разработка
   input: 1410431
   output: 41092
   cache_read: 2370387
   note: 'n=13; медианы: input=748236, cache_read=120984, output=14695'
+  policy:
+    main_min_index: 50
+    budget_min_index: 30
+    max_premium: 3.0
 monitor:
-  title: monitor
+  title: Мониторинг
   input: 1064477
   output: 16662
   cache_read: 89270
   note: 'n=10; медианы: input=1016611, cache_read=2112, output=13400'
+  policy:
+    main_min_index: 40
+    budget_min_index: 30
+    max_premium: 2.5
 scripting:
-  title: scripting
+  title: Скрипты и автоматизация
   input: 1154284
   output: 34670
   cache_read: 3944616
   note: 'n=5; медианы: input=704791, cache_read=2563080, output=49170'
+  policy:
+    main_min_index: 35
+    budget_min_index: 28
+    max_premium: 2.0
 simple:
   title: Быстрые простые ответы
   input: 71122
   output: 1954
   cache_read: 38418
   note: 'n=8; медианы: input=19930, cache_read=0, output=732'
+  policy:
+    main_min_index: 30
+    budget_min_index: 25
+    max_premium: 1.5
 tosir-imp:
   title: Реализация этапа по плану
   input: 232782
   output: 32802
   cache_read: 3927520
   note: 'n=6; медианы: input=103061, cache_read=805984, output=12452'
+  policy:
+    main_min_index: 50
+    budget_min_index: 30
+    max_premium: 3.0
 tosir-pln:
   title: Планирование этапа задачи
   input: 287634
   output: 14733
   cache_read: 1247787
   note: 'n=6; медианы: input=260544, cache_read=76288, output=7384'
+  policy:
+    main_min_index: 50
+    budget_min_index: 30
+    max_premium: 3.0
 tosir-rvw:
   title: Ревью задачи
   input: 722789
   output: 9992
   cache_read: 419354
   note: 'n=5; медианы: input=71807, cache_read=142080, output=10688'
+  policy:
+    main_min_index: 50
+    budget_min_index: 30
+    max_premium: 3.0

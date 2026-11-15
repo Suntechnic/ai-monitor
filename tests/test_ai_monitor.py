@@ -76,5 +76,90 @@ class StaleThresholdTests(unittest.TestCase):
         self.assertEqual(ai_monitor.STATS_MAX_AGE, dt.timedelta(hours=2))
 
 
+class RepositoryProfilesTests(unittest.TestCase):
+    def test_repository_profiles_define_right_sizing_policy(self):
+        profiles = ai_monitor.load_profiles(ai_monitor.ROOT / "profiles.yml")
+        for key, profile in profiles.items():
+            with self.subTest(key):
+                self.assertIn("policy", profile)
+                self.assertGreaterEqual(
+                    profile["policy"]["main_min_index"],
+                    profile["policy"]["budget_min_index"],
+                )
+
+
+class ProfilePolicyTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.addCleanup(self.temporary.cleanup)
+
+    def load(self, policy):
+        path = self.root / "profiles.yml"
+        path.write_text(
+            "task:\n"
+            "  title: Задача\n"
+            "  input: 100\n"
+            "  output: 10\n"
+            "  cache_read: 0\n"
+            + policy,
+            encoding="utf-8",
+        )
+        return ai_monitor.load_profiles(path)
+
+    def test_policy_is_optional(self):
+        profiles = self.load("")
+        self.assertNotIn("policy", profiles["task"])
+
+    def test_valid_policy_is_loaded(self):
+        profiles = self.load(
+            "  policy:\n"
+            "    main_min_index: 40\n"
+            "    budget_min_index: 30\n"
+            "    max_premium: 2.5\n"
+        )
+        self.assertEqual(profiles["task"]["policy"], {
+            "main_min_index": 40,
+            "budget_min_index": 30,
+            "max_premium": 2.5,
+        })
+
+    def test_budget_floor_above_main_floor_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "budget_min_index exceeds main_min_index"):
+            self.load(
+                "  policy:\n"
+                "    main_min_index: 40\n"
+                "    budget_min_index: 45\n"
+                "    max_premium: 2.0\n"
+            )
+
+    def test_invalid_policy_values_are_rejected(self):
+        cases = {
+            "missing main floor": (
+                "  policy:\n"
+                "    budget_min_index: 30\n"
+                "    max_premium: 2.0\n"
+            ),
+            "premium below one": (
+                "  policy:\n"
+                "    main_min_index: 40\n"
+                "    budget_min_index: 30\n"
+                "    max_premium: 0.5\n"
+            ),
+            "unknown field": (
+                "  policy:\n"
+                "    main_min_index: 40\n"
+                "    budget_min_index: 30\n"
+                "    max_premium: 2.0\n"
+                "    max_index: 60\n"
+            ),
+            "not a mapping": "  policy: right-sizing\n",
+        }
+        for name, policy in cases.items():
+            with self.subTest(name):
+                with self.assertRaises(ValueError):
+                    self.load(policy)
+
+
 if __name__ == "__main__":
     unittest.main()

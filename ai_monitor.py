@@ -3,6 +3,7 @@ import argparse
 import datetime as dt
 import fcntl
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -73,6 +74,25 @@ def load_profiles(path):
         note = profile.get('note')
         if note is not None and (not isinstance(note, str) or not note.strip()):
             raise ValueError(f'Invalid note for {key}')
+        policy = profile.get('policy')
+        if policy is not None:
+            if not isinstance(policy, dict):
+                raise ValueError(f'Invalid policy for {key}')
+            allowed = {'main_min_index', 'budget_min_index', 'max_premium'}
+            extra = set(policy) - allowed
+            if extra:
+                raise ValueError(f'Unknown policy fields for {key}: {", ".join(sorted(map(str, extra)))}')
+            for field in ('main_min_index', 'budget_min_index'):
+                value = policy.get(field)
+                if (isinstance(value, bool) or not isinstance(value, (int, float))
+                        or not math.isfinite(value) or not 0 <= value <= 100):
+                    raise ValueError(f'Missing or invalid policy.{field} for {key}')
+            premium = policy.get('max_premium')
+            if (isinstance(premium, bool) or not isinstance(premium, (int, float))
+                    or not math.isfinite(premium) or premium < 1):
+                raise ValueError(f'Missing or invalid policy.max_premium for {key}')
+            if policy['budget_min_index'] > policy['main_min_index']:
+                raise ValueError(f'policy.budget_min_index exceeds main_min_index for {key}')
     return profiles
 
 
@@ -356,7 +376,7 @@ def main():
         fetch_aa.refresh_rating(rating_snapshot, output, run / 'session-models.yml')
         rules = {
             'report.md': (500, ['# Мониторинг ИИ', '## Рекомендации', '## Новости', '## Изменения']),
-            'prices.md': (200, ['# Цены', 'https://', '## Сравнение цен по моделям']),
+            'prices.md': (200, ['# Цены', 'https://', '## Right-sizing', '## Сравнение цен по моделям']),
             'rating.md': (150, ['# Рейтинг моделей', 'Artificial Analysis', 'Intelligence Index']),
             'sources.md': (200, ['# Источники', 'https://', 'Artificial Analysis']),
         }
